@@ -523,15 +523,17 @@ window.TreeEngine = (function () {
             personX = centerX - (node.spouses.length * (cardW + spouseGap)) / 2;
           }
           placeNode(node.id, personX, y, node.id === focusId ? "focus" : "descendant");
+          let prevSpX = personX;
           let curSpX = personX + cardW + spouseGap;
           for (const sp of node.spouses) {
             placeNode(sp.id, curSpX, y, "spouse");
             spousePositions.set(sp.famId, {
-              p1X: personX,
+              p1X: prevSpX,
               p2X: curSpX,
-              midX: (personX + curSpX) / 2,
+              midX: (prevSpX + curSpX) / 2,
               marriageYear: sp.marriageYear,
             });
+            prevSpX = curSpX;
             curSpX += cardW + spouseGap;
           }
         }
@@ -539,16 +541,14 @@ window.TreeEngine = (function () {
         node.placedPersonX = personX;
         node.placedY = y;
 
-        // Layout children below
+        // Layout children below (centered on centerX so children stay strictly inside node.width!)
         if (node.children.length > 0) {
           const nextY = y + gapY;
           const totalChildrenW =
             node.children.reduce((acc, c) => acc + c.width, 0) +
             (node.children.length - 1) * gapX * 1.3;
 
-          const firstSpInfo = node.spouses.length > 0 ? spousePositions.get(node.spouses[0].famId) : null;
-          const unionCenterX = firstSpInfo ? firstSpInfo.midX : personX;
-          let curLeft = unionCenterX - totalChildrenW / 2;
+          let curLeft = centerX - totalChildrenW / 2;
 
           const childrenByFam = new Map();
           for (const ch of node.children) {
@@ -643,14 +643,24 @@ window.TreeEngine = (function () {
       // Step B: Coupled Ancestors Upwards (Gen -1 .. -this.ancestorGens)
       // Each node in the ancestor tree is a COUPLE UNIT (Father + Mother side-by-side!),
       // so parents are ALWAYS right next to each other and directly above their children!
+      const visitedAnc = new Set();
       const buildAncestorCoupleTree = (famId, depth) => {
         if (!famId || depth > this.ancestorGens) return null;
         const fam = this.tree.families[famId];
         if (!fam) return null;
 
-        const fatherId = fam.husband && this.tree.individuals[fam.husband] ? fam.husband : null;
-        const motherId = fam.wife && this.tree.individuals[fam.wife] ? fam.wife : null;
+        const fatherId =
+          fam.husband && this.tree.individuals[fam.husband] && !visitedAnc.has(fam.husband)
+            ? fam.husband
+            : null;
+        const motherId =
+          fam.wife && this.tree.individuals[fam.wife] && !visitedAnc.has(fam.wife)
+            ? fam.wife
+            : null;
         if (!fatherId && !motherId) return null;
+
+        if (fatherId) visitedAnc.add(fatherId);
+        if (motherId) visitedAnc.add(motherId);
 
         const father = fatherId ? this.tree.individuals[fatherId] : null;
         const mother = motherId ? this.tree.individuals[motherId] : null;
@@ -665,13 +675,27 @@ window.TreeEngine = (function () {
             : null;
 
         const ownCoupleW = fatherId && motherId ? cardW * 2 + spouseGap : cardW;
-        let upperW = 0;
+        const fatherOff = fatherId && motherId ? -(cardW + spouseGap) / 2 : 0;
+        const motherOff = fatherId && motherId ? +(cardW + spouseGap) / 2 : 0;
+
+        let leftCenterRel = 0;
+        let rightCenterRel = 0;
+        let leftExtent = ownCoupleW / 2;
+        let rightExtent = ownCoupleW / 2;
+
         if (leftParentsTree && rightParentsTree) {
-          upperW = leftParentsTree.width + rightParentsTree.width + gapX * 1.5;
+          leftCenterRel = Math.min(fatherOff, -gapX * 0.65 - leftParentsTree.rightExtent);
+          rightCenterRel = Math.max(motherOff, +gapX * 0.65 + rightParentsTree.leftExtent);
+          leftExtent = Math.max(ownCoupleW / 2, -(leftCenterRel - leftParentsTree.leftExtent));
+          rightExtent = Math.max(ownCoupleW / 2, +(rightCenterRel + rightParentsTree.rightExtent));
         } else if (leftParentsTree) {
-          upperW = leftParentsTree.width;
+          leftCenterRel = fatherOff;
+          leftExtent = Math.max(ownCoupleW / 2, -(leftCenterRel - leftParentsTree.leftExtent));
+          rightExtent = Math.max(ownCoupleW / 2, +(leftCenterRel + leftParentsTree.rightExtent));
         } else if (rightParentsTree) {
-          upperW = rightParentsTree.width;
+          rightCenterRel = motherOff;
+          leftExtent = Math.max(ownCoupleW / 2, -(rightCenterRel - rightParentsTree.leftExtent));
+          rightExtent = Math.max(ownCoupleW / 2, +(rightCenterRel + rightParentsTree.rightExtent));
         }
 
         return {
@@ -681,7 +705,11 @@ window.TreeEngine = (function () {
           marriageYear: fam.marriage?.year || "",
           depth,
           ownCoupleW,
-          width: Math.max(ownCoupleW, upperW),
+          leftExtent,
+          rightExtent,
+          width: leftExtent + rightExtent,
+          leftCenterRel,
+          rightCenterRel,
           leftParents: leftParentsTree,
           rightParents: rightParentsTree,
         };
@@ -725,25 +753,13 @@ window.TreeEngine = (function () {
         const leftT = coupleNode.leftParents;
         const rightT = coupleNode.rightParents;
 
-        if (leftT && rightT) {
-          // Ideal centers are above fatherX and motherX, pushed outward only enough so their subtrees don't overlap
-          const minDistance = (leftT.width + rightT.width) / 2 + gapX * 1.5;
-          const naturalMid = (fatherX + motherX) / 2;
-          const leftCenter = Math.min(fatherX, naturalMid - minDistance / 2);
-          const rightCenter = Math.max(motherX, naturalMid + minDistance / 2);
-
-          layoutAncestorCoupleTree(leftT, leftCenter, nextY, [
+        if (leftT) {
+          layoutAncestorCoupleTree(leftT, centerX + coupleNode.leftCenterRel, nextY, [
             { x: fatherX, y, id: coupleNode.fatherId },
           ]);
-          layoutAncestorCoupleTree(rightT, rightCenter, nextY, [
-            { x: motherX, y, id: coupleNode.motherId },
-          ]);
-        } else if (leftT) {
-          layoutAncestorCoupleTree(leftT, fatherX, nextY, [
-            { x: fatherX, y, id: coupleNode.fatherId },
-          ]);
-        } else if (rightT) {
-          layoutAncestorCoupleTree(rightT, motherX, nextY, [
+        }
+        if (rightT) {
+          layoutAncestorCoupleTree(rightT, centerX + coupleNode.rightCenterRel, nextY, [
             { x: motherX, y, id: coupleNode.motherId },
           ]);
         }
@@ -760,9 +776,9 @@ window.TreeEngine = (function () {
         }
       }
 
-      // Render connectors and nodes (passing placedNodes so we know who has hidden branches!)
+      const connectedFamIds = new Set(connectors.map((c) => c.famId).filter(Boolean));
       this._drawConnectors(connectors, cardW, cardH);
-      this._drawNodes(Array.from(placedNodes.values()), placedNodes);
+      this._drawNodes(Array.from(placedNodes.values()), placedNodes, connectedFamIds);
       this._computeBounds(cardW, cardH);
     }
 
@@ -986,14 +1002,17 @@ window.TreeEngine = (function () {
 
     // =========================================================================
     // 3. FULL TREE (COMPLETE GENEALOGICAL TREE OF ALL PEOPLE)
+    //    - MyHeritage-style planar hierarchical layout with ZERO overlapping lines!
+    //    - Primary extended tree (focus person + siblings + descendants + uncles/cousins + ancestors)
+    //    - Plus collateral family branches arranged in a clean 2D shelf grid.
     // =========================================================================
     _renderFullTree() {
       const individuals = this.tree.individuals;
       const families = this.tree.families;
       const cardW = this.compactCards ? COMPACT_W : CARD_W;
       const cardH = this.compactCards ? COMPACT_H : CARD_H;
-      const gapX = this.compactCards ? 22 : 30;
-      const gapY = this.compactCards ? 132 : 156;
+      const gapX = this.compactCards ? 24 : SIBLING_GAP_X;
+      const gapY = this.compactCards ? 136 : LEVEL_GAP_Y;
       const spouseGap = this.compactCards ? 48 : SPOUSE_GAP_X;
 
       let activeIds = new Set(Object.keys(individuals));
@@ -1009,16 +1028,18 @@ window.TreeEngine = (function () {
             for (const fid of p.fams || []) {
               const f = families[fid];
               if (f) {
-                if (f.husband) matched.add(f.husband);
-                if (f.wife) matched.add(f.wife);
-                for (const cid of f.children || []) matched.add(cid);
+                if (f.husband && individuals[f.husband]) matched.add(f.husband);
+                if (f.wife && individuals[f.wife]) matched.add(f.wife);
+                for (const cid of f.children || []) {
+                  if (individuals[cid]) matched.add(cid);
+                }
               }
             }
             for (const fid of p.famc || []) {
               const f = families[fid];
               if (f) {
-                if (f.husband) matched.add(f.husband);
-                if (f.wife) matched.add(f.wife);
+                if (f.husband && individuals[f.husband]) matched.add(f.husband);
+                if (f.wife && individuals[f.wife]) matched.add(f.wife);
               }
             }
           }
@@ -1026,286 +1047,933 @@ window.TreeEngine = (function () {
         if (matched.size > 0) activeIds = matched;
       }
 
-      const genMap = new Map();
-      const assignComponentGenerations = (seedId) => {
-        const compIds = [];
-        const queue = [{ id: seedId, gen: 0 }];
-        genMap.set(seedId, 0);
+      const globalVisited = new Set();
+      const focusId =
+        this.focusPersonId && activeIds.has(this.focusPersonId)
+          ? this.focusPersonId
+          : Array.from(activeIds)[0];
 
-        while (queue.length > 0) {
-          const { id, gen } = queue.shift();
-          compIds.push(id);
-          const p = individuals[id];
-          if (!p) continue;
-
-          for (const fid of p.famc || []) {
-            const fam = families[fid];
-            if (!fam) continue;
-            for (const parId of [fam.husband, fam.wife]) {
-              if (parId && activeIds.has(parId) && !genMap.has(parId)) {
-                genMap.set(parId, gen - 1);
-                queue.push({ id: parId, gen: gen - 1 });
-              }
-            }
-            for (const sibId of fam.children || []) {
-              if (sibId && activeIds.has(sibId) && !genMap.has(sibId)) {
-                genMap.set(sibId, gen);
-                queue.push({ id: sibId, gen });
-              }
-            }
-          }
-
-          for (const fid of p.fams || []) {
-            const fam = families[fid];
-            if (!fam) continue;
-            for (const spId of [fam.husband, fam.wife]) {
-              if (spId && activeIds.has(spId) && !genMap.has(spId)) {
-                genMap.set(spId, gen);
-                queue.push({ id: spId, gen });
-              }
-            }
-            for (const chId of fam.children || []) {
-              if (chId && activeIds.has(chId) && !genMap.has(chId)) {
-                genMap.set(chId, gen + 1);
-                queue.push({ id: chId, gen: gen + 1 });
-              }
-            }
-          }
-        }
-        return compIds;
-      };
-
-      const components = [];
-      if (this.focusPersonId && activeIds.has(this.focusPersonId)) {
-        components.push(assignComponentGenerations(this.focusPersonId));
-      }
-      for (const id of activeIds) {
-        if (!genMap.has(id)) {
-          components.push(assignComponentGenerations(id));
-        }
-      }
-
-      components.sort((a, b) => b.length - a.length);
-
-      const placedNodes = new Map();
-      const connectors = [];
-      let componentOffsetX = 0;
-
-      for (const comp of components) {
-        if (comp.length === 0) continue;
-
-        const byGen = new Map();
-        let minGen = Infinity,
-          maxGen = -Infinity;
-        for (const pid of comp) {
-          const g = genMap.get(pid) || 0;
-          minGen = Math.min(minGen, g);
-          maxGen = Math.max(maxGen, g);
-          if (!byGen.has(g)) byGen.set(g, []);
-          byGen.get(g).push(pid);
-        }
-
-        const unitsByGen = new Map();
-        const assignedToUnit = new Set();
-
-        for (let g = minGen; g <= maxGen; g++) {
-          const pids = byGen.get(g) || [];
-          pids.sort((a, b) => {
-            const pa = individuals[a];
-            const pb = individuals[b];
-            const fca = pa?.famc?.[0] || "";
-            const fcb = pb?.famc?.[0] || "";
-            if (fca !== fcb) return fca.localeCompare(fcb);
-            return (pa?.birth?.year || 9999) - (pb?.birth?.year || 9999);
-          });
-
-          const units = [];
-          for (const pid of pids) {
-            if (assignedToUnit.has(pid)) continue;
-            const unitMembers = [pid];
-            assignedToUnit.add(pid);
-
-            const p = individuals[pid];
-            for (const fid of p?.fams || []) {
-              const fam = families[fid];
-              if (!fam) continue;
-              const spId = fam.husband === pid ? fam.wife : fam.husband;
-              if (
-                spId &&
-                activeIds.has(spId) &&
-                !assignedToUnit.has(spId) &&
-                genMap.get(spId) === g
-              ) {
-                unitMembers.push(spId);
-                assignedToUnit.add(spId);
-              }
-            }
-            units.push({
-              members: unitMembers,
-              gen: g,
-              x: 0,
-              width: unitMembers.length * cardW + (unitMembers.length - 1) * spouseGap,
-            });
-          }
-          unitsByGen.set(g, units);
-        }
-
-        const memberX = new Map();
-        const assignRowX = (g) => {
-          const units = unitsByGen.get(g) || [];
-          let curX = 0;
-          for (const u of units) {
-            u.x = curX + u.width / 2;
-            let mx = curX;
-            for (const m of u.members) {
-              memberX.set(m, mx + cardW / 2);
-              mx += cardW + spouseGap;
-            }
-            curX += u.width + gapX * 1.4;
-          }
-        };
-
-        for (let g = minGen; g <= maxGen; g++) {
-          assignRowX(g);
-        }
-
-        for (let iter = 0; iter < 4; iter++) {
-          for (let g = minGen + 1; g <= maxGen; g++) {
-            const units = unitsByGen.get(g) || [];
-            for (const u of units) {
-              const refXs = [];
-              for (const m of u.members) {
-                const p = individuals[m];
-                for (const fid of p?.famc || []) {
-                  const fam = families[fid];
-                  if (fam?.husband && memberX.has(fam.husband)) refXs.push(memberX.get(fam.husband));
-                  if (fam?.wife && memberX.has(fam.wife)) refXs.push(memberX.get(fam.wife));
-                }
-              }
-              u.desiredX = refXs.length > 0 ? refXs.reduce((a, b) => a + b, 0) / refXs.length : u.x;
-            }
-            units.sort((a, b) => a.desiredX - b.desiredX);
-            let nextMinLeft = -Infinity;
-            for (const u of units) {
-              const half = u.width / 2;
-              const left = Math.max(nextMinLeft, u.desiredX - half);
-              u.x = left + half;
-              let mx = left;
-              for (const m of u.members) {
-                memberX.set(m, mx + cardW / 2);
-                mx += cardW + spouseGap;
-              }
-              nextMinLeft = left + u.width + gapX * 1.3;
-            }
-          }
-
-          for (let g = maxGen - 1; g >= minGen; g--) {
-            const units = unitsByGen.get(g) || [];
-            for (const u of units) {
-              const refXs = [];
-              for (const m of u.members) {
-                const p = individuals[m];
-                for (const fid of p?.fams || []) {
-                  const fam = families[fid];
-                  for (const cid of fam?.children || []) {
-                    if (memberX.has(cid)) refXs.push(memberX.get(cid));
-                  }
-                }
-              }
-              u.desiredX = refXs.length > 0 ? refXs.reduce((a, b) => a + b, 0) / refXs.length : u.x;
-            }
-            units.sort((a, b) => a.desiredX - b.desiredX);
-            let nextMinLeft = -Infinity;
-            for (const u of units) {
-              const half = u.width / 2;
-              const left = Math.max(nextMinLeft, u.desiredX - half);
-              u.x = left + half;
-              let mx = left;
-              for (const m of u.members) {
-                memberX.set(m, mx + cardW / 2);
-                mx += cardW + spouseGap;
-              }
-              nextMinLeft = left + u.width + gapX * 1.3;
-            }
-          }
-        }
-
-        let compMinX = Infinity,
-          compMaxX = -Infinity;
-        for (const pid of comp) {
-          const x = memberX.get(pid) || 0;
-          compMinX = Math.min(compMinX, x - cardW / 2);
-          compMaxX = Math.max(compMaxX, x + cardW / 2);
-        }
-
-        const shiftX = componentOffsetX - compMinX;
-        for (const pid of comp) {
-          const finalX = (memberX.get(pid) || 0) + shiftX;
-          const finalY = (genMap.get(pid) || 0) * gapY;
-          const role = pid === this.focusPersonId ? "focus" : "member";
-          placedNodes.set(pid, { id: pid, x: finalX, y: finalY, w: cardW, h: cardH, role });
-          this.nodePositions.set(pid, { x: finalX, y: finalY, w: cardW, h: cardH });
-        }
-
-        componentOffsetX += compMaxX - compMinX + cardW * 1.8;
-      }
-
-      for (const [fid, fam] of Object.entries(families)) {
-        const hPos = fam.husband ? placedNodes.get(fam.husband) : null;
-        const wPos = fam.wife ? placedNodes.get(fam.wife) : null;
-        const chCoords = (fam.children || [])
-          .map((cid) => {
-            const p = placedNodes.get(cid);
-            return p ? { x: p.x, y: p.y, id: cid } : null;
-          })
+      // Shared planar subtree builders operating on globalVisited
+      const buildDescSubtree = (pid, depth = 0, maxDepth = 45) => {
+        globalVisited.add(pid);
+        const p = individuals[pid];
+        const famsList = (p?.fams || [])
+          .map((fid) => families[fid])
           .filter(Boolean);
 
-        if (hPos && wPos) {
-          const midX = (hPos.x + wPos.x) / 2;
-          const midY = (hPos.y + wPos.y) / 2;
-          if (chCoords.length > 0) {
-            connectors.push({
-              type: "couple-children",
-              famId: fid,
-              p1: { x: hPos.x, y: hPos.y },
-              p2: { x: wPos.x, y: wPos.y },
-              mid: { x: midX, y: midY },
+        const spouses = [];
+        const childSubtrees = [];
+
+        for (const fam of famsList) {
+          const spId = fam.husband === pid ? fam.wife : fam.husband;
+          if (spId && activeIds.has(spId) && !globalVisited.has(spId)) {
+            globalVisited.add(spId);
+            spouses.push({
+              id: spId,
+              famId: fam.id,
               marriageYear: fam.marriage?.year || "",
-              children: chCoords,
-            });
-          } else {
-            connectors.push({
-              type: "couple-only",
-              famId: fid,
-              p1: { x: hPos.x, y: hPos.y },
-              p2: { x: wPos.x, y: wPos.y },
-              mid: { x: midX, y: midY },
-              marriageYear: fam.marriage?.year || "",
+              isHusband: fam.husband === spId,
             });
           }
-        } else if ((hPos || wPos) && chCoords.length > 0) {
-          const par = hPos || wPos;
-          connectors.push({
+          if (depth < maxDepth) {
+            for (const cid of fam.children || []) {
+              if (activeIds.has(cid) && !globalVisited.has(cid)) {
+                const chSub = buildDescSubtree(cid, depth + 1, maxDepth);
+                chSub.parentFamId = fam.id;
+                childSubtrees.push(chSub);
+              }
+            }
+          }
+        }
+
+        const spouseOnLeft =
+          spouses.length === 1 && p?.sex === "F" && spouses[0].isHusband && pid !== focusId;
+
+        const coupleWidth = cardW + spouses.length * (cardW + spouseGap);
+        let childrenTotalWidth = 0;
+        if (childSubtrees.length > 0) {
+          childrenTotalWidth =
+            childSubtrees.reduce((acc, c) => acc + c.width, 0) +
+            (childSubtrees.length - 1) * gapX * 1.3;
+        }
+
+        return {
+          id: pid,
+          depth,
+          spouses,
+          spouseOnLeft,
+          children: childSubtrees,
+          coupleWidth,
+          width: Math.max(coupleWidth, childrenTotalWidth),
+        };
+      };
+
+      const layoutDescSubtree = (node, centerX, y, placeFn, connList) => {
+        let personX = centerX;
+        const spousePositions = new Map();
+
+        if (node.spouses.length === 1 && node.spouseOnLeft) {
+          const sp = node.spouses[0];
+          const spX = centerX - (cardW + spouseGap) / 2;
+          personX = centerX + (cardW + spouseGap) / 2;
+          placeFn(sp.id, spX, y, "spouse");
+          placeFn(node.id, personX, y, node.id === focusId ? "focus" : "descendant");
+          spousePositions.set(sp.famId, {
+            p1X: spX,
+            p2X: personX,
+            midX: centerX,
+            marriageYear: sp.marriageYear,
+          });
+        } else {
+          if (node.spouses.length > 0) {
+            personX = centerX - (node.spouses.length * (cardW + spouseGap)) / 2;
+          }
+          placeFn(node.id, personX, y, node.id === focusId ? "focus" : "descendant");
+          let prevSpX = personX;
+          let curSpX = personX + cardW + spouseGap;
+          for (const sp of node.spouses) {
+            placeFn(sp.id, curSpX, y, "spouse");
+            spousePositions.set(sp.famId, {
+              p1X: prevSpX,
+              p2X: curSpX,
+              midX: (prevSpX + curSpX) / 2,
+              marriageYear: sp.marriageYear,
+            });
+            prevSpX = curSpX;
+            curSpX += cardW + spouseGap;
+          }
+        }
+
+        node.placedPersonX = personX;
+        node.placedY = y;
+        node.spousePositions = spousePositions;
+
+        if (node.children.length > 0) {
+          const nextY = y + gapY;
+          const totalChildrenW =
+            node.children.reduce((acc, c) => acc + c.width, 0) +
+            (node.children.length - 1) * gapX * 1.3;
+
+          let curLeft = centerX - totalChildrenW / 2;
+          const childrenByFam = new Map();
+
+          for (const ch of node.children) {
+            const chCenter = curLeft + ch.width / 2;
+            layoutDescSubtree(ch, chCenter, nextY, placeFn, connList);
+            const famKey = ch.parentFamId || "default";
+            if (!childrenByFam.has(famKey)) childrenByFam.set(famKey, []);
+            childrenByFam.get(famKey).push({
+              x: ch.placedPersonX,
+              y: nextY,
+              id: ch.id,
+            });
+            curLeft += ch.width + gapX * 1.3;
+          }
+
+          for (const [famKey, chCoords] of childrenByFam.entries()) {
+            const spInfo = spousePositions.get(famKey);
+            if (spInfo) {
+              connList.push({
+                type: "couple-children",
+                famId: famKey,
+                p1: { x: spInfo.p1X, y },
+                p2: { x: spInfo.p2X, y },
+                mid: { x: spInfo.midX, y },
+                marriageYear: spInfo.marriageYear,
+                children: chCoords,
+              });
+            } else {
+              connList.push({
+                type: "single-parent",
+                famId: famKey,
+                parent: { x: personX, y, id: node.id },
+                children: chCoords,
+              });
+            }
+          }
+        }
+
+        for (const sp of node.spouses) {
+          const hasChildrenConn = connList.some((c) => c.famId === sp.famId);
+          if (!hasChildrenConn) {
+            const spInfo = spousePositions.get(sp.famId);
+            if (spInfo) {
+              connList.push({
+                type: "couple-only",
+                famId: sp.famId,
+                p1: { x: spInfo.p1X, y },
+                p2: { x: spInfo.p2X, y },
+                mid: { x: spInfo.midX, y },
+                marriageYear: spInfo.marriageYear,
+              });
+            }
+          }
+        }
+      };
+
+      const buildAncCoupleTree = (famId, depth = 1, maxAnc = 45) => {
+        if (!famId || depth > maxAnc) return null;
+        const fam = families[famId];
+        if (!fam) return null;
+
+        const fatherId =
+          fam.husband && activeIds.has(fam.husband) && !globalVisited.has(fam.husband)
+            ? fam.husband
+            : null;
+        const motherId =
+          fam.wife && activeIds.has(fam.wife) && !globalVisited.has(fam.wife)
+            ? fam.wife
+            : null;
+        if (!fatherId && !motherId) return null;
+
+        if (fatherId) globalVisited.add(fatherId);
+        if (motherId) globalVisited.add(motherId);
+
+        const father = fatherId ? individuals[fatherId] : null;
+        const mother = motherId ? individuals[motherId] : null;
+
+        const leftParentsTree =
+          father && father.famc?.[0] && depth < maxAnc
+            ? buildAncCoupleTree(father.famc[0], depth + 1, maxAnc)
+            : null;
+        const rightParentsTree =
+          mother && mother.famc?.[0] && depth < maxAnc
+            ? buildAncCoupleTree(mother.famc[0], depth + 1, maxAnc)
+            : null;
+
+        const ownCoupleW = fatherId && motherId ? cardW * 2 + spouseGap : cardW;
+        const fatherOff = fatherId && motherId ? -(cardW + spouseGap) / 2 : 0;
+        const motherOff = fatherId && motherId ? +(cardW + spouseGap) / 2 : 0;
+
+        let leftCenterRel = 0;
+        let rightCenterRel = 0;
+        let leftExtent = ownCoupleW / 2;
+        let rightExtent = ownCoupleW / 2;
+
+        if (leftParentsTree && rightParentsTree) {
+          leftCenterRel = Math.min(fatherOff, -gapX * 0.65 - leftParentsTree.rightExtent);
+          rightCenterRel = Math.max(motherOff, +gapX * 0.65 + rightParentsTree.leftExtent);
+          leftExtent = Math.max(ownCoupleW / 2, -(leftCenterRel - leftParentsTree.leftExtent));
+          rightExtent = Math.max(ownCoupleW / 2, +(rightCenterRel + rightParentsTree.rightExtent));
+        } else if (leftParentsTree) {
+          leftCenterRel = fatherOff;
+          leftExtent = Math.max(ownCoupleW / 2, -(leftCenterRel - leftParentsTree.leftExtent));
+          rightExtent = Math.max(ownCoupleW / 2, +(leftCenterRel + leftParentsTree.rightExtent));
+        } else if (rightParentsTree) {
+          rightCenterRel = motherOff;
+          leftExtent = Math.max(ownCoupleW / 2, -(rightCenterRel - rightParentsTree.leftExtent));
+          rightExtent = Math.max(ownCoupleW / 2, +(rightCenterRel + rightParentsTree.rightExtent));
+        }
+
+        return {
+          famId,
+          fatherId,
+          motherId,
+          marriageYear: fam.marriage?.year || "",
+          depth,
+          ownCoupleW,
+          leftExtent,
+          rightExtent,
+          width: leftExtent + rightExtent,
+          leftCenterRel,
+          rightCenterRel,
+          leftParents: leftParentsTree,
+          rightParents: rightParentsTree,
+        };
+      };
+
+      const layoutAncCoupleTree = (coupleNode, centerX, y, childrenCoords, placeFn, connList) => {
+        if (!coupleNode) return;
+
+        let fatherX = centerX;
+        let motherX = centerX;
+
+        if (coupleNode.fatherId && coupleNode.motherId) {
+          fatherX = centerX - (cardW + spouseGap) / 2;
+          motherX = centerX + (cardW + spouseGap) / 2;
+          placeFn(coupleNode.fatherId, fatherX, y, "ancestor");
+          placeFn(coupleNode.motherId, motherX, y, "ancestor");
+
+          connList.push({
+            type: "couple-children",
+            famId: coupleNode.famId,
+            p1: { x: fatherX, y },
+            p2: { x: motherX, y },
+            mid: { x: centerX, y },
+            marriageYear: coupleNode.marriageYear,
+            children: childrenCoords,
+          });
+        } else {
+          const singleId = coupleNode.fatherId || coupleNode.motherId;
+          placeFn(singleId, centerX, y, "ancestor");
+          connList.push({
             type: "single-parent",
-            famId: fid,
-            parent: { x: par.x, y: par.y, id: par.id },
-            children: chCoords,
+            famId: coupleNode.famId,
+            parent: { x: centerX, y, id: singleId },
+            children: childrenCoords,
+          });
+        }
+
+        const nextY = y - gapY;
+        if (coupleNode.leftParents) {
+          layoutAncCoupleTree(
+            coupleNode.leftParents,
+            centerX + coupleNode.leftCenterRel,
+            nextY,
+            [{ x: fatherX, y, id: coupleNode.fatherId }],
+            placeFn,
+            connList
+          );
+        }
+        if (coupleNode.rightParents) {
+          layoutAncCoupleTree(
+            coupleNode.rightParents,
+            centerX + coupleNode.rightCenterRel,
+            nextY,
+            [{ x: motherX, y, id: coupleNode.motherId }],
+            placeFn,
+            connList
+          );
+        }
+      };
+
+      // Helper to create a self-contained layout block
+      const createBlock = (title, subtitle = "") => {
+        const nodes = new Map();
+        const conns = [];
+        const place = (id, x, y, role = "") => {
+          if (!nodes.has(id)) {
+            nodes.set(id, { id, x, y, w: cardW, h: cardH, role });
+          }
+        };
+        return { title, subtitle, nodes, conns, place, parentLinkBadge: null };
+      };
+
+      const finalizeBlockBounds = (blk) => {
+        let minX = Infinity,
+          maxX = -Infinity,
+          minY = Infinity,
+          maxY = -Infinity;
+        for (const n of blk.nodes.values()) {
+          minX = Math.min(minX, n.x - cardW / 2);
+          maxX = Math.max(maxX, n.x + cardW / 2);
+          minY = Math.min(minY, n.y - cardH / 2);
+          maxY = Math.max(maxY, n.y + cardH / 2);
+        }
+        if (minX === Infinity) {
+          minX = 0;
+          maxX = cardW;
+          minY = 0;
+          maxY = cardH;
+        }
+        blk.minX = minX;
+        blk.maxX = maxX;
+        blk.minY = minY;
+        blk.maxY = maxY;
+        blk.width = maxX - minX;
+        blk.height = maxY - minY;
+        return blk;
+      };
+
+      const allBlocks = [];
+
+      // =====================================================================
+      // BLOCK 0: PRIMARY EXTENDED TREE (Focus Person + Siblings + Uncles/Cousins + Ancestors)
+      // =====================================================================
+      if (focusId && activeIds.has(focusId)) {
+        const fp = individuals[focusId];
+        const primaryBlock = createBlock(
+          `Albero Principale — ${fp.fullName}`,
+          "Antenati diretti, fratelli, zii, cugini e discendenti"
+        );
+
+        const parentFamId = fp.famc?.[0] || null;
+        const parentFam = parentFamId ? families[parentFamId] : null;
+
+        // 1. Generation 0: Focus person + siblings (and all their descendants)
+        const gen0Subtrees = [];
+        if (parentFam && parentFam.children && parentFam.children.length > 1) {
+          for (const cid of parentFam.children) {
+            if (activeIds.has(cid) && !globalVisited.has(cid)) {
+              gen0Subtrees.push(buildDescSubtree(cid, 0));
+            }
+          }
+        } else {
+          gen0Subtrees.push(buildDescSubtree(focusId, 0));
+        }
+
+        const totalGen0W =
+          gen0Subtrees.reduce((acc, s) => acc + s.width, 0) +
+          (gen0Subtrees.length - 1) * gapX * 1.5;
+        let curGen0Left = -totalGen0W / 2;
+        const gen0BloodCoords = [];
+
+        for (const sub of gen0Subtrees) {
+          const subCenter = curGen0Left + sub.width / 2;
+          layoutDescSubtree(sub, subCenter, 0, primaryBlock.place, primaryBlock.conns);
+          gen0BloodCoords.push({ x: sub.placedPersonX, y: 0, id: sub.id });
+          curGen0Left += sub.width + gapX * 1.5;
+        }
+
+        // 2. Generation -1 (Parents + Paternal Uncles/Cousins on Outer Left + Maternal Uncles/Cousins on Outer Right)
+        //    and Generations <= -2 (Paternal & Maternal Ancestor Trees)
+        if (parentFam) {
+          const fatherId =
+            parentFam.husband && activeIds.has(parentFam.husband) && !globalVisited.has(parentFam.husband)
+              ? parentFam.husband
+              : null;
+          const motherId =
+            parentFam.wife && activeIds.has(parentFam.wife) && !globalVisited.has(parentFam.wife)
+              ? parentFam.wife
+              : null;
+
+          if (fatherId) globalVisited.add(fatherId);
+          if (motherId) globalVisited.add(motherId);
+
+          const minChildX = Math.min(...gen0BloodCoords.map((c) => c.x));
+          const maxChildX = Math.max(...gen0BloodCoords.map((c) => c.x));
+          const parentsCenterX = (minChildX + maxChildX) / 2;
+
+          let fatherX = parentsCenterX;
+          let motherX = parentsCenterX;
+
+          if (fatherId && motherId) {
+            fatherX = parentsCenterX - (cardW + spouseGap) / 2;
+            motherX = parentsCenterX + (cardW + spouseGap) / 2;
+            primaryBlock.place(fatherId, fatherX, -gapY, "ancestor");
+            primaryBlock.place(motherId, motherX, -gapY, "ancestor");
+            primaryBlock.conns.push({
+              type: "couple-children",
+              famId: parentFamId,
+              p1: { x: fatherX, y: -gapY },
+              p2: { x: motherX, y: -gapY },
+              mid: { x: parentsCenterX, y: -gapY },
+              marriageYear: parentFam.marriage?.year || "",
+              children: gen0BloodCoords,
+            });
+          } else if (fatherId || motherId) {
+            const singleId = fatherId || motherId;
+            primaryBlock.place(singleId, parentsCenterX, -gapY, "ancestor");
+            primaryBlock.conns.push({
+              type: "single-parent",
+              famId: parentFamId,
+              parent: { x: parentsCenterX, y: -gapY, id: singleId },
+              children: gen0BloodCoords,
+            });
+          }
+
+          // Paternal Uncles/Aunts (Father's siblings) placed on the OUTER LEFT of Generation -1 (y = -gapY)
+          const father = fatherId ? individuals[fatherId] : null;
+          const patGrandFamId = father?.famc?.[0] || null;
+          const patGrandFam = patGrandFamId ? families[patGrandFamId] : null;
+          const patUncleCoords = [];
+
+          if (patGrandFam && patGrandFam.children) {
+            const patUncleSubs = [];
+            for (const uId of patGrandFam.children) {
+              if (uId !== fatherId && activeIds.has(uId) && !globalVisited.has(uId)) {
+                patUncleSubs.push(buildDescSubtree(uId, 0));
+              }
+            }
+            if (patUncleSubs.length > 0) {
+              const totalPatUnclesW =
+                patUncleSubs.reduce((acc, s) => acc + s.width, 0) +
+                (patUncleSubs.length - 1) * gapX * 1.4;
+              const leftBound = Math.min(-totalGen0W / 2, fatherX - cardW / 2) - gapX * 2.2;
+              let curUncleLeft = leftBound - totalPatUnclesW;
+              for (const uSub of patUncleSubs) {
+                const uCenter = curUncleLeft + uSub.width / 2;
+                layoutDescSubtree(uSub, uCenter, -gapY, primaryBlock.place, primaryBlock.conns);
+                patUncleCoords.push({ x: uSub.placedPersonX, y: -gapY, id: uSub.id });
+                curUncleLeft += uSub.width + gapX * 1.4;
+              }
+            }
+          }
+          if (fatherId) {
+            patUncleCoords.push({ x: fatherX, y: -gapY, id: fatherId });
+          }
+
+          // Maternal Uncles/Aunts (Mother's siblings) placed on the OUTER RIGHT of Generation -1 (y = -gapY)
+          const mother = motherId ? individuals[motherId] : null;
+          const matGrandFamId = mother?.famc?.[0] || null;
+          const matGrandFam = matGrandFamId ? families[matGrandFamId] : null;
+          const matAuntCoords = [];
+
+          if (motherId) {
+            matAuntCoords.push({ x: motherX, y: -gapY, id: motherId });
+          }
+          if (matGrandFam && matGrandFam.children) {
+            const matAuntSubs = [];
+            for (const aId of matGrandFam.children) {
+              if (aId !== motherId && activeIds.has(aId) && !globalVisited.has(aId)) {
+                matAuntSubs.push(buildDescSubtree(aId, 0));
+              }
+            }
+            if (matAuntSubs.length > 0) {
+              let curAuntLeft = Math.max(totalGen0W / 2, motherX + cardW / 2) + gapX * 2.2;
+              for (const aSub of matAuntSubs) {
+                const aCenter = curAuntLeft + aSub.width / 2;
+                layoutDescSubtree(aSub, aCenter, -gapY, primaryBlock.place, primaryBlock.conns);
+                matAuntCoords.push({ x: aSub.placedPersonX, y: -gapY, id: aSub.id });
+                curAuntLeft += aSub.width + gapX * 1.4;
+              }
+            }
+          }
+
+          // Build Paternal & Maternal Ancestor Trees from Generation -2 upwards (y <= -2*gapY)
+          const patAncTree = patGrandFamId ? buildAncCoupleTree(patGrandFamId, 2) : null;
+          const matAncTree = matGrandFamId ? buildAncCoupleTree(matGrandFamId, 2) : null;
+
+          if (patAncTree && matAncTree) {
+            const patDesiredCenter =
+              (Math.min(...patUncleCoords.map((c) => c.x)) +
+                Math.max(...patUncleCoords.map((c) => c.x))) /
+              2;
+            const matDesiredCenter =
+              (Math.min(...matAuntCoords.map((c) => c.x)) +
+                Math.max(...matAuntCoords.map((c) => c.x))) /
+              2;
+
+            const patCenter = Math.min(
+              patDesiredCenter,
+              parentsCenterX - gapX * 0.8 - patAncTree.rightExtent
+            );
+            const matCenter = Math.max(
+              matDesiredCenter,
+              parentsCenterX + gapX * 0.8 + matAncTree.leftExtent
+            );
+
+            layoutAncCoupleTree(
+              patAncTree,
+              patCenter,
+              -2 * gapY,
+              patUncleCoords,
+              primaryBlock.place,
+              primaryBlock.conns
+            );
+            layoutAncCoupleTree(
+              matAncTree,
+              matCenter,
+              -2 * gapY,
+              matAuntCoords,
+              primaryBlock.place,
+              primaryBlock.conns
+            );
+          } else if (patAncTree) {
+            const patCenter =
+              (Math.min(...patUncleCoords.map((c) => c.x)) +
+                Math.max(...patUncleCoords.map((c) => c.x))) /
+              2;
+            layoutAncCoupleTree(
+              patAncTree,
+              patCenter,
+              -2 * gapY,
+              patUncleCoords,
+              primaryBlock.place,
+              primaryBlock.conns
+            );
+          } else if (matAncTree) {
+            const matCenter =
+              (Math.min(...matAuntCoords.map((c) => c.x)) +
+                Math.max(...matAuntCoords.map((c) => c.x))) /
+              2;
+            layoutAncCoupleTree(
+              matAncTree,
+              matCenter,
+              -2 * gapY,
+              matAuntCoords,
+              primaryBlock.place,
+              primaryBlock.conns
+            );
+          }
+        }
+
+        finalizeBlockBounds(primaryBlock);
+        allBlocks.push(primaryBlock);
+      }
+
+      // =====================================================================
+      // SECONDARY FAMILY LINEAGE BLOCKS (for all remaining unvisited relatives)
+      // =====================================================================
+      const countReachableDesc = (startPid) => {
+        const seen = new Set();
+        const walk = (pid) => {
+          if (!pid || !activeIds.has(pid) || globalVisited.has(pid) || seen.has(pid)) return;
+          seen.add(pid);
+          const p = individuals[pid];
+          for (const fid of p?.fams || []) {
+            const fam = families[fid];
+            if (!fam) continue;
+            const spId = fam.husband === pid ? fam.wife : fam.husband;
+            if (spId && activeIds.has(spId) && !globalVisited.has(spId)) seen.add(spId);
+            for (const cid of fam.children || []) walk(cid);
+          }
+        };
+        walk(startPid);
+        return seen.size;
+      };
+
+      while (globalVisited.size < activeIds.size) {
+        // Find unvisited individuals in activeIds who have NO unvisited parents in activeIds
+        const candidateRoots = [];
+        for (const pid of activeIds) {
+          if (globalVisited.has(pid)) continue;
+          const p = individuals[pid];
+          let hasUnvisitedParent = false;
+          for (const fid of p?.famc || []) {
+            const fam = families[fid];
+            if (!fam) continue;
+            if (
+              (fam.husband && activeIds.has(fam.husband) && !globalVisited.has(fam.husband)) ||
+              (fam.wife && activeIds.has(fam.wife) && !globalVisited.has(fam.wife))
+            ) {
+              hasUnvisitedParent = true;
+              break;
+            }
+          }
+          if (!hasUnvisitedParent) {
+            candidateRoots.push(pid);
+          }
+        }
+
+        const pool =
+          candidateRoots.length > 0
+            ? candidateRoots
+            : Array.from(activeIds).filter((id) => !globalVisited.has(id));
+        if (pool.length === 0) break;
+
+        // Score each root by total reachable unvisited family members (grouping siblings with same famc)
+        let bestRoot = pool[0];
+        let bestScore = -1;
+        for (const rId of pool) {
+          const rp = individuals[rId];
+          const sharedFamcId = rp?.famc?.[0] || null;
+          let score = 0;
+          if (sharedFamcId && families[sharedFamcId]) {
+            for (const sibId of families[sharedFamcId].children || []) {
+              if (!globalVisited.has(sibId)) score += countReachableDesc(sibId);
+            }
+          } else {
+            score = countReachableDesc(rId);
+          }
+          if (score > bestScore) {
+            bestScore = score;
+            bestRoot = rId;
+          }
+        }
+
+        const rootPerson = individuals[bestRoot];
+        const sharedFamcId = rootPerson?.famc?.[0] || null;
+        const sharedFamc = sharedFamcId ? families[sharedFamcId] : null;
+
+        // Determine sibling roots if they share an already-placed parent family
+        const rootSiblings = [];
+        if (sharedFamc && sharedFamc.children && sharedFamc.children.length > 1) {
+          for (const sibId of sharedFamc.children) {
+            if (activeIds.has(sibId) && !globalVisited.has(sibId)) {
+              rootSiblings.push(sibId);
+            }
+          }
+        }
+        if (rootSiblings.length === 0) {
+          rootSiblings.push(bestRoot);
+        }
+
+        const surnameLabel = rootPerson?.surname || rootPerson?.fullName || "Collaterale";
+        let blockTitle = `Ramo ${surnameLabel}`;
+        let blockSubtitle = rootPerson?.fullName || "";
+        let parentLinkInfo = null;
+
+        if (sharedFamc) {
+          const hName = sharedFamc.husband ? individuals[sharedFamc.husband]?.fullName : "";
+          const wName = sharedFamc.wife ? individuals[sharedFamc.wife]?.fullName : "";
+          const coupleNames = [hName, wName].filter(Boolean).join(" & ");
+          if (coupleNames) {
+            blockTitle = `Ramo ${surnameLabel}`;
+            blockSubtitle = `Discendenti di ${coupleNames}`;
+            parentLinkInfo = {
+              label: `⬆ Genitori: ${coupleNames}`,
+              targetId: sharedFamc.husband || sharedFamc.wife,
+            };
+          }
+        }
+
+        const blk = createBlock(blockTitle, blockSubtitle);
+        const subtrees = [];
+        for (const sibId of rootSiblings) {
+          if (!globalVisited.has(sibId)) {
+            subtrees.push(buildDescSubtree(sibId, 0));
+          }
+        }
+
+        const totalW =
+          subtrees.reduce((acc, s) => acc + s.width, 0) + (subtrees.length - 1) * gapX * 1.4;
+        let curLeft = -totalW / 2;
+        const topBloodCoords = [];
+
+        for (const sub of subtrees) {
+          const sc = curLeft + sub.width / 2;
+          layoutDescSubtree(sub, sc, 0, blk.place, blk.conns);
+          topBloodCoords.push({ x: sub.placedPersonX, y: 0, id: sub.id });
+          curLeft += sub.width + gapX * 1.4;
+        }
+
+        // If multiple siblings share an already-placed parent couple, connect them with a clean top sibling bus!
+        if (topBloodCoords.length > 1 && sharedFamcId) {
+          const minTopX = Math.min(...topBloodCoords.map((c) => c.x));
+          const maxTopX = Math.max(...topBloodCoords.map((c) => c.x));
+          const midTopX = (minTopX + maxTopX) / 2;
+          blk.conns.push({
+            type: "single-parent",
+            famId: sharedFamcId,
+            parent: { x: midTopX, y: -gapY * 0.55, id: parentLinkInfo?.targetId || bestRoot },
+            children: topBloodCoords,
+          });
+          if (parentLinkInfo) {
+            blk.parentLinkBadge = {
+              x: midTopX,
+              y: -gapY * 0.55 + cardH / 2 - 6,
+              label: parentLinkInfo.label,
+              targetId: parentLinkInfo.targetId,
+            };
+          }
+        } else if (
+          subtrees.length === 1 &&
+          subtrees[0].spouses.length === 1 &&
+          !sharedFamcId
+        ) {
+          // If the single root's spouse has unvisited parents, place their ancestor tree right above the spouse!
+          const spId = subtrees[0].spouses[0].id;
+          const spPerson = individuals[spId];
+          const spFamcId = spPerson?.famc?.[0] || null;
+          if (spFamcId) {
+            const spAncTree = buildAncCoupleTree(spFamcId, 1);
+            if (spAncTree) {
+              const spNode = blk.nodes.get(spId);
+              if (spNode) {
+                layoutAncCoupleTree(
+                  spAncTree,
+                  spNode.x,
+                  -gapY,
+                  [{ x: spNode.x, y: 0, id: spId }],
+                  blk.place,
+                  blk.conns
+                );
+              }
+            }
+          }
+        }
+
+        finalizeBlockBounds(blk);
+        allBlocks.push(blk);
+      }
+
+      // =====================================================================
+      // PACK ALL BLOCKS INTO A CLEAN 2D SHELF GRID
+      // =====================================================================
+      const placedNodes = new Map();
+      const connectors = [];
+      const branchBoxes = [];
+
+      const shiftAndCommitBlock = (blk, targetLeftX, targetTopY, showFrame = true) => {
+        const dx = targetLeftX - blk.minX;
+        const dy = targetTopY - blk.minY;
+
+        for (const [id, n] of blk.nodes.entries()) {
+          const finalNode = {
+            id,
+            x: n.x + dx,
+            y: n.y + dy,
+            w: n.w,
+            h: n.h,
+            role: n.role,
+          };
+          placedNodes.set(id, finalNode);
+          this.nodePositions.set(id, { x: finalNode.x, y: finalNode.y, w: finalNode.w, h: finalNode.h });
+        }
+
+        for (const c of blk.conns) {
+          if (c.type === "couple-children" || c.type === "couple-only") {
+            connectors.push({
+              ...c,
+              p1: { x: c.p1.x + dx, y: c.p1.y + dy },
+              p2: { x: c.p2.x + dx, y: c.p2.y + dy },
+              mid: { x: c.mid.x + dx, y: c.mid.y + dy },
+              children: (c.children || []).map((ch) => ({
+                x: ch.x + dx,
+                y: ch.y + dy,
+                id: ch.id,
+              })),
+            });
+          } else if (c.type === "single-parent") {
+            connectors.push({
+              ...c,
+              parent: { x: c.parent.x + dx, y: c.parent.y + dy, id: c.parent.id },
+              children: (c.children || []).map((ch) => ({
+                x: ch.x + dx,
+                y: ch.y + dy,
+                id: ch.id,
+              })),
+            });
+          }
+        }
+
+        if (showFrame) {
+          branchBoxes.push({
+            x: targetLeftX - 44,
+            y: targetTopY - 72,
+            w: blk.width + 88,
+            h: blk.height + 116,
+            title: `${blk.title} (${blk.nodes.size})`,
+            subtitle: blk.subtitle,
+            parentLinkBadge: blk.parentLinkBadge
+              ? {
+                  x: blk.parentLinkBadge.x + dx,
+                  y: blk.parentLinkBadge.y + dy,
+                  label: blk.parentLinkBadge.label,
+                  targetId: blk.parentLinkBadge.targetId,
+                }
+              : null,
+          });
+        }
+      };
+
+      if (allBlocks.length > 0) {
+        const primary = allBlocks[0];
+        // Center primary block horizontally around x = 0, top at y = 0
+        shiftAndCommitBlock(primary, -primary.width / 2, 0, true);
+
+        const majorBranches = allBlocks.slice(1).filter((b) => b.nodes.size >= 3);
+        const minorCouples = allBlocks.slice(1).filter((b) => b.nodes.size < 3);
+
+        majorBranches.sort((a, b) => b.nodes.size - a.nodes.size);
+
+        const shelfMaxW = Math.max(7200, Math.min(11500, primary.width));
+        const gridLeftStart = -shelfMaxW / 2;
+        const blockGapX = 160;
+        const blockGapY = 190;
+
+        let curShelfX = gridLeftStart;
+        let curShelfY = primary.height + blockGapY;
+        let shelfMaxH = 0;
+
+        for (const blk of majorBranches) {
+          if (curShelfX > gridLeftStart && curShelfX + blk.width > gridLeftStart + shelfMaxW) {
+            curShelfX = gridLeftStart;
+            curShelfY += shelfMaxH + blockGapY;
+            shelfMaxH = 0;
+          }
+          shiftAndCommitBlock(blk, curShelfX, curShelfY, true);
+          curShelfX += blk.width + blockGapX;
+          shelfMaxH = Math.max(shelfMaxH, blk.height);
+        }
+
+        if (majorBranches.length > 0) {
+          curShelfY += shelfMaxH + blockGapY;
+        }
+
+        // Pack minor 1-2 person in-law parent couples neatly in a compact multi-column section at the bottom
+        if (minorCouples.length > 0) {
+          const sectionStartY = curShelfY;
+          let colX = gridLeftStart;
+          let rowY = sectionStartY;
+          let rowMaxH = 0;
+          let maxRightUsed = gridLeftStart;
+
+          for (const blk of minorCouples) {
+            if (colX > gridLeftStart && colX + blk.width > gridLeftStart + shelfMaxW) {
+              colX = gridLeftStart;
+              rowY += rowMaxH + 85;
+              rowMaxH = 0;
+            }
+            shiftAndCommitBlock(blk, colX, rowY, false);
+            maxRightUsed = Math.max(maxRightUsed, colX + blk.width);
+            colX += blk.width + 95;
+            rowMaxH = Math.max(rowMaxH, blk.height);
+          }
+
+          const totalMinorPeople = minorCouples.reduce((acc, b) => acc + b.nodes.size, 0);
+          branchBoxes.push({
+            x: gridLeftStart - 44,
+            y: sectionStartY - 72,
+            w: Math.max(1200, maxRightUsed - gridLeftStart) + 88,
+            h: rowY - sectionStartY + rowMaxH + 116,
+            title: `Famiglie Collegate e Genitori di Coniugi (${totalMinorPeople})`,
+            subtitle: "Nuclei familiari complementari collegati ai coniugi dell'albero",
+            parentLinkBadge: null,
           });
         }
       }
 
-      this._drawConnectors(connectors, cardW, cardH);
-      this._drawNodes(Array.from(placedNodes.values()), placedNodes);
+      const connectedFamIds = new Set(connectors.map((c) => c.famId).filter(Boolean));
+      this._drawConnectors(connectors, cardW, cardH, branchBoxes);
+      this._drawNodes(Array.from(placedNodes.values()), placedNodes, connectedFamIds);
       this._computeBounds(cardW, cardH);
     }
 
     // =========================================================================
     // DRAWING CONNECTORS (SMOOTH ROUNDED MYHERITAGE CORNERS), NODES & BADGES
     // =========================================================================
-    _drawConnectors(connectors, cardW, cardH) {
+    _drawConnectors(connectors, cardW, cardH, branchBoxes = []) {
       const halfH = cardH / 2;
       let html = "";
       let badgesHtml = "";
+
+      // Render branch section frames for Full Tree mode
+      for (const box of branchBoxes) {
+        html += `
+          <g class="branch-group-frame">
+            <rect x="${box.x.toFixed(1)}" y="${box.y.toFixed(1)}"
+                  width="${box.w.toFixed(1)}" height="${box.h.toFixed(1)}"
+                  rx="20" class="branch-group-box" />
+            <text x="${(box.x + 24).toFixed(1)}" y="${(box.y + 30).toFixed(1)}" class="branch-group-title">${escapeXml(
+          box.title
+        )}</text>
+            ${
+              box.subtitle
+                ? `<text x="${(box.x + 24).toFixed(1)}" y="${(box.y + 49).toFixed(1)}" class="branch-group-subtitle">${escapeXml(
+                    box.subtitle
+                  )}</text>`
+                : ""
+            }
+          </g>
+        `;
+        if (box.parentLinkBadge) {
+          const pb = box.parentLinkBadge;
+          const pillW = Math.min(340, Math.max(150, pb.label.length * 6.8 + 24));
+          badgesHtml += `
+            <g class="parent-link-pill" data-target-id="${escapeXml(pb.targetId || "")}"
+               transform="translate(${pb.x.toFixed(1)}, ${pb.y.toFixed(1)})" style="cursor:pointer">
+              <rect x="${(-pillW / 2).toFixed(1)}" y="-13" width="${pillW.toFixed(1)}" height="24" rx="12" class="marriage-pill" />
+              <text y="3" text-anchor="middle" class="marriage-pill-text">${escapeXml(pb.label)}</text>
+            </g>
+          `;
+        }
+      }
+
+      // Allocate vertical bus tracks per parent row Y so two horizontal buses NEVER overlap!
+      const tracksByRow = new Map();
+      const getTrackOffset = (parentY, dropX, children) => {
+        const rowKey = Math.round(parentY / 10) * 10;
+        if (!tracksByRow.has(rowKey)) tracksByRow.set(rowKey, []);
+        const tracks = tracksByRow.get(rowKey);
+
+        const allXs = [dropX, ...children.map((ch) => ch.x)];
+        const minX = Math.min(...allXs) - 14;
+        const maxX = Math.max(...allXs) + 14;
+
+        if (maxX - minX <= 30) return 0; // Purely vertical drop needs no horizontal bus separation
+
+        let tIdx = 0;
+        while (tIdx < tracks.length) {
+          const conflict = tracks[tIdx].some((iv) => !(maxX < iv.minX || minX > iv.maxX));
+          if (!conflict) break;
+          tIdx++;
+        }
+        if (tIdx === tracks.length) tracks.push([]);
+        tracks[tIdx].push({ minX, maxX });
+        return tIdx * 9;
+      };
 
       for (const c of connectors) {
         const isHighlighted =
@@ -1329,14 +1997,16 @@ window.TreeEngine = (function () {
           }
 
           if (c.type === "couple-children" && c.children.length > 0) {
-            const busY = c.mid.y + halfH + 30;
+            const trackOffset = getTrackOffset(c.mid.y, c.mid.x, c.children);
+            const busY = c.mid.y + halfH + 25 + trackOffset;
             for (const ch of c.children) {
-              const d = buildRoundedDropPath(c.mid.x, c.mid.y, busY, ch.x, ch.y - halfH, 13);
+              const d = buildRoundedDropPath(c.mid.x, c.mid.y, busY, ch.x, ch.y - halfH, 12);
               html += `<path class="${strokeClass}" d="${d}" />`;
             }
           }
         } else if (c.type === "single-parent" && c.children.length > 0) {
-          const busY = c.parent.y + halfH + 30;
+          const trackOffset = getTrackOffset(c.parent.y, c.parent.x, c.children);
+          const busY = c.parent.y + halfH + 25 + trackOffset;
           for (const ch of c.children) {
             const d = buildRoundedDropPath(
               c.parent.x,
@@ -1344,7 +2014,7 @@ window.TreeEngine = (function () {
               busY,
               ch.x,
               ch.y - halfH,
-              13
+              12
             );
             html += `<path class="${strokeClass}" d="${d}" />`;
           }
@@ -1352,7 +2022,20 @@ window.TreeEngine = (function () {
       }
 
       this.linksLayer.innerHTML = html;
-      if (this.badgesLayer) this.badgesLayer.innerHTML = badgesHtml;
+      if (this.badgesLayer) {
+        this.badgesLayer.innerHTML = badgesHtml;
+        this.badgesLayer.querySelectorAll(".parent-link-pill").forEach((el) => {
+          el.addEventListener("click", (e) => {
+            if (this.panMoved) return;
+            e.stopPropagation();
+            const tid = el.dataset.targetId;
+            if (tid) {
+              this.centerOnPerson(tid, 0.85, true);
+              if (this.callbacks.onSelectPerson) this.callbacks.onSelectPerson(tid);
+            }
+          });
+        });
+      }
     }
 
     _drawKinshipOverlay() {
@@ -1375,7 +2058,7 @@ window.TreeEngine = (function () {
       `;
     }
 
-    _hasHiddenBranch(personId, placedNodes) {
+    _hasHiddenBranch(personId, placedNodes, connectedFamIds = null) {
       if (!placedNodes) return { parents: false, family: false };
       const p = this.tree.individuals[personId];
       if (!p) return { parents: false, family: false };
@@ -1384,9 +2067,13 @@ window.TreeEngine = (function () {
       for (const fid of p.famc || []) {
         const fam = this.tree.families[fid];
         if (!fam) continue;
+        const hasExistingParent =
+          (fam.husband && this.tree.individuals[fam.husband]) ||
+          (fam.wife && this.tree.individuals[fam.wife]);
         if (
           (fam.husband && this.tree.individuals[fam.husband] && !placedNodes.has(fam.husband)) ||
-          (fam.wife && this.tree.individuals[fam.wife] && !placedNodes.has(fam.wife))
+          (fam.wife && this.tree.individuals[fam.wife] && !placedNodes.has(fam.wife)) ||
+          (hasExistingParent && connectedFamIds && !connectedFamIds.has(fid))
         ) {
           hiddenParents = true;
           break;
@@ -1408,12 +2095,21 @@ window.TreeEngine = (function () {
             break;
           }
         }
+        if (
+          !hiddenFamily &&
+          connectedFamIds &&
+          !connectedFamIds.has(fid) &&
+          ((spId && this.tree.individuals[spId]) || (fam.children && fam.children.length > 0))
+        ) {
+          hiddenFamily = true;
+          break;
+        }
       }
 
       return { parents: hiddenParents, family: hiddenFamily };
     }
 
-    _drawNodes(nodes, placedNodes = null) {
+    _drawNodes(nodes, placedNodes = null, connectedFamIds = null) {
       const hasKinship = Boolean(this.kinshipHighlight);
 
       for (const n of nodes) {
@@ -1426,7 +2122,7 @@ window.TreeEngine = (function () {
         const isMrca = hasKinship && this.kinshipHighlight.commonAncestorIds.has(n.id);
         const isDimmed = hasKinship && !isInKinship;
 
-        const hiddenInfo = this._hasHiddenBranch(n.id, placedNodes);
+        const hiddenInfo = this._hasHiddenBranch(n.id, placedNodes, connectedFamIds);
 
         const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
         g.setAttribute("transform", `translate(${n.x - n.w / 2}, ${n.y - n.h / 2})`);

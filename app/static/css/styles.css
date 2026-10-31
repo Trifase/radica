@@ -651,6 +651,27 @@ body {
   font-weight: 700;
 }
 
+/* FULL TREE BRANCH SECTION FRAMES */
+.branch-group-box {
+  fill: rgba(148, 163, 184, 0.045);
+  stroke: var(--border-color);
+  stroke-width: 1.5px;
+  stroke-dasharray: 8 5;
+}
+
+.branch-group-title {
+  fill: var(--text-primary);
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+
+.branch-group-subtitle {
+  fill: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+}
+
 /* KINSHIP GLOW OVERLAY */
 .kinship-glow-bg {
   fill: none;
