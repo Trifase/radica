@@ -623,15 +623,14 @@ body {
 .tree-link {
   fill: none;
   stroke: var(--link-stroke);
-  stroke-width: 2px;
+  stroke-width: 1.8px;
   stroke-linecap: round;
   stroke-linejoin: round;
   transition: stroke 0.2s, stroke-width 0.2s;
 }
 
 .tree-link.marriage-line {
-  stroke-dasharray: 4 3;
-  stroke-width: 2px;
+  stroke-width: 1.8px;
 }
 
 .tree-link.kinship-link {
@@ -648,7 +647,7 @@ body {
 
 .marriage-pill-text {
   fill: var(--text-primary);
-  font-size: 11px;
+  font-size: 10.5px;
   font-weight: 700;
 }
 
@@ -675,7 +674,7 @@ body {
   }
 }
 
-/* SVG PERSON NODE CARDS */
+/* SVG PERSON NODE CARDS (MyHeritage-inspired clean borders & indicators) */
 .person-node {
   cursor: pointer;
   transition: opacity 0.25s ease;
@@ -692,45 +691,39 @@ body {
 .person-node .card-bg {
   fill: var(--card-fill);
   stroke: var(--card-stroke);
-  stroke-width: 1.4px;
+  stroke-width: 2px;
   transition: stroke 0.15s, stroke-width 0.15s;
 }
 
-.person-node:hover .card-bg {
-  stroke: var(--accent);
-  stroke-width: 2.2px;
+.person-node.sex-m .card-bg {
+  stroke: #06b6d4;
 }
 
-.person-node.selected .card-bg {
-  stroke: var(--accent);
+.person-node.sex-f .card-bg {
+  stroke: #fb7185;
+}
+
+.person-node.sex-u .card-bg {
+  stroke: #a78bfa;
+}
+
+.person-node:hover .card-bg {
   stroke-width: 2.8px;
 }
 
+.person-node.selected .card-bg,
 .person-node.is-focus .card-bg {
-  stroke: #38bdf8;
-  stroke-width: 2.6px;
-}
-
-.person-node.kinship-node .card-bg {
-  stroke: #f59e0b;
-  stroke-width: 3px;
-}
-
-.person-node.mrca-node .card-bg {
-  stroke: #ec4899;
   stroke-width: 3.2px;
 }
 
-.person-node.sex-m .card-sex-strip {
-  fill: var(--male-color);
+.person-node.kinship-node .card-bg {
+  stroke: #f59e0b !important;
+  stroke-width: 3.2px;
 }
 
-.person-node.sex-f .card-sex-strip {
-  fill: var(--female-color);
-}
-
-.person-node.sex-u .card-sex-strip {
-  fill: var(--unknown-color);
+.person-node.mrca-node .card-bg {
+  stroke: #ec4899 !important;
+  stroke-width: 3.4px;
 }
 
 .avatar-ring {
@@ -740,19 +733,19 @@ body {
 }
 
 .person-node.sex-m .avatar-fallback {
-  fill: rgba(59, 130, 246, 0.2);
-  stroke: rgba(59, 130, 246, 0.45);
+  fill: rgba(6, 182, 212, 0.16);
+  stroke: rgba(6, 182, 212, 0.45);
   stroke-width: 1.5px;
 }
 
 .person-node.sex-f .avatar-fallback {
-  fill: rgba(236, 72, 153, 0.2);
-  stroke: rgba(236, 72, 153, 0.45);
+  fill: rgba(251, 113, 133, 0.16);
+  stroke: rgba(251, 113, 133, 0.45);
   stroke-width: 1.5px;
 }
 
 .person-node.sex-u .avatar-fallback {
-  fill: rgba(139, 92, 246, 0.2);
+  fill: rgba(139, 92, 246, 0.16);
   stroke: rgba(139, 92, 246, 0.45);
   stroke-width: 1.5px;
 }
@@ -765,36 +758,20 @@ body {
 
 .card-given-name {
   fill: var(--text-primary);
-  font-size: 13px;
+  font-size: 12.5px;
   font-weight: 700;
 }
 
 .card-surname {
-  fill: var(--accent);
-  font-size: 12px;
-  font-weight: 600;
+  fill: var(--text-primary);
+  font-size: 12.5px;
+  font-weight: 700;
 }
 
 .card-years {
   fill: var(--text-secondary);
   font-size: 11px;
   font-weight: 500;
-}
-
-.card-place {
-  fill: var(--text-muted);
-  font-size: 10px;
-}
-
-.focus-badge-rect {
-  fill: var(--accent);
-}
-
-.focus-badge-text {
-  fill: #ffffff;
-  font-size: 9.5px;
-  font-weight: 700;
-  text-transform: uppercase;
 }
 
 .mrca-badge-rect {
@@ -807,28 +784,85 @@ body {
   font-weight: 700;
 }
 
-.node-action-btn {
-  opacity: 0;
-  transition: opacity 0.15s;
+/* MyHeritage-style Hidden Branch Indicator above card */
+.hidden-branch-indicator {
+  cursor: pointer;
 }
 
-.person-node:hover .node-action-btn {
-  opacity: 1;
+.branch-ind-line {
+  stroke: #94a3b8;
+  stroke-width: 1.6px;
 }
 
-.node-btn-bg {
-  fill: var(--bg-elevated);
+.branch-ind-box {
+  fill: #94a3b8;
+  transition: fill 0.15s, transform 0.15s;
+}
+
+.hidden-branch-indicator:hover .branch-ind-box {
+  fill: #10b981;
+}
+
+.hidden-branch-indicator:hover .branch-ind-line {
+  stroke: #10b981;
+}
+
+/* MyHeritage-style Bottom '+' Tab */
+.bottom-add-tab {
+  cursor: pointer;
+}
+
+.add-tab-bg {
+  fill: var(--card-fill);
   stroke: var(--border-strong);
-  stroke-width: 1px;
+  stroke-width: 1.2px;
+  transition: fill 0.15s;
 }
 
-.node-action-btn:hover .node-btn-bg {
+.bottom-add-tab:hover .add-tab-bg {
+  fill: var(--accent-soft);
+  stroke: var(--accent);
+}
+
+.add-tab-plus {
+  fill: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.bottom-add-tab:hover .add-tab-plus {
   fill: var(--accent);
 }
 
-.node-btn-icon {
-  fill: var(--text-primary);
-  font-size: 12px;
+/* Top-right green pivot button & bottom-right edit icon */
+.pivot-circle {
+  fill: #22c55e;
+  transition: transform 0.15s, fill 0.15s;
+}
+
+.pivot-circle.active-focus {
+  fill: #a855f7;
+}
+
+.pivot-icon-btn:hover .pivot-circle {
+  fill: #16a34a;
+}
+
+.pivot-symbol {
+  fill: #ffffff;
+  font-size: 10.5px;
+  font-weight: 700;
+}
+
+.edit-pencil {
+  fill: var(--text-secondary);
+  font-size: 13px;
+  opacity: 0.75;
+}
+
+.edit-icon-btn:hover .edit-pencil {
+  fill: var(--accent);
+  opacity: 1;
 }
 
 /* FAN CHART STYLES */
