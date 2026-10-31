@@ -140,9 +140,9 @@ window.TreeEngine = (function () {
       // Mouse pan
       this.svg.addEventListener("mousedown", (e) => {
         if (e.button !== 0) return;
+        this.panMoved = false;
         if (e.target.closest(".node-action-btn")) return;
         this.isPanning = true;
-        this.panMoved = false;
         this.panStartX = e.clientX - this.tx;
         this.panStartY = e.clientY - this.ty;
         this.svg.classList.add("panning");
@@ -1449,13 +1449,14 @@ window.TreeEngine = (function () {
         `;
 
         g.addEventListener("click", (e) => {
-          if (this.panMoved) return;
-          e.stopPropagation();
           const actionBtn = e.target.closest(".node-action-btn");
           if (actionBtn && actionBtn.dataset.action === "focus") {
+            e.stopPropagation();
             if (this.callbacks.onFocusPerson) this.callbacks.onFocusPerson(n.id);
             return;
           }
+          if (this.panMoved) return;
+          e.stopPropagation();
           if (this.callbacks.onSelectPerson) this.callbacks.onSelectPerson(n.id);
         });
 
