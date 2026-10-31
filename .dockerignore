@@ -1,0 +1,8 @@
+*.ged
+*.gedcom
+data/
+.git/
+__pycache__/
+*.pyc
+*.tar.gz
+.env

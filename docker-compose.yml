@@ -1,0 +1,11 @@
+services:
+  radica:
+    build: .
+    container_name: radica
+    restart: unless-stopped
+    ports:
+      - "4000:4000"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - DATA_DIR=/app/data

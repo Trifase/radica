@@ -1,0 +1,620 @@
+<!DOCTYPE html>
+<html lang="it" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Ràdica — Albero Genealogico</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/styles.css" />
+</head>
+<body>
+  <!-- TOP HEADER -->
+  <header class="topbar">
+    <div class="topbar-brand">
+      <div class="brand-logo" title="Ràdica — Albero Genealogico">🌿</div>
+      <div class="brand-titles">
+        <h1 id="tree-title">Ràdica</h1>
+        <span id="tree-stats" class="brand-subtitle">Caricamento...</span>
+      </div>
+    </div>
+
+    <!-- VIEW MODE SWITCHER -->
+    <nav class="mode-switcher" aria-label="Modalità di visualizzazione">
+      <button class="mode-btn active" data-mode="focus" title="Albero concentrato su una persona (Antenati + Discendenti)">
+        <span class="mode-icon">🎯</span>
+        <span>Persona</span>
+      </button>
+      <button class="mode-btn" data-mode="fan" title="Ventaglio degli Antenati interattivo">
+        <span class="mode-icon">🪭</span>
+        <span>Ventaglio Antenati</span>
+      </button>
+      <button class="mode-btn" data-mode="full" title="Visualizzazione completa di tutto l'albero genealogico">
+        <span class="mode-icon">🌳</span>
+        <span>Vista Completa</span>
+      </button>
+      <button class="mode-btn" data-mode="table" title="Elenco anagrafico completo e filtri">
+        <span class="mode-icon">📋</span>
+        <span>Elenco</span>
+      </button>
+    </nav>
+
+    <!-- INSTANT SEARCH -->
+    <div class="search-wrapper">
+      <div class="search-input-box">
+        <span class="search-icon">🔍</span>
+        <input
+          type="text"
+          id="global-search"
+          placeholder="Cerca nome, cognome, luogo, anno... (Ctrl+K)"
+          autocomplete="off"
+        />
+        <button id="clear-search-btn" class="search-clear hidden" title="Pulisci">✕</button>
+      </div>
+      <div id="search-results-dropdown" class="search-dropdown hidden"></div>
+    </div>
+
+    <!-- TOP ACTIONS -->
+    <div class="topbar-actions">
+      <button id="toggle-kinship-btn" class="action-btn kinship-trigger-btn" title="Evidenzia la linea che lega due persone">
+        <span>🔗</span>
+        <span class="btn-label"> Parentela</span>
+      </button>
+      <button id="new-person-top-btn" class="action-btn primary-btn" title="Aggiungi una nuova persona all'albero">
+        <span>➕</span>
+        <span class="btn-label"> Persona</span>
+      </button>
+      <button id="import-gedcom-btn" class="action-btn" title="Importa file GEDCOM (.ged)">
+        <span>📥</span>
+        <span class="btn-label"> Importa</span>
+      </button>
+      <a href="/api/gedcom/export" id="export-gedcom-btn" class="action-btn" title="Esporta l'albero in formato GEDCOM (.ged)">
+        <span>📤</span>
+        <span class="btn-label"> Esporta .GED</span>
+      </a>
+      <button id="theme-toggle-btn" class="icon-btn" title="Cambia tema Chiaro/Scuro">🌙</button>
+    </div>
+  </header>
+
+  <!-- MAIN WORKSPACE -->
+  <main class="workspace">
+    <!-- FLOATING CONTEXTUAL VIEW OPTIONS BAR -->
+    <div id="view-options-bar" class="floating-toolbar">
+      <!-- Focus Mode Controls -->
+      <div id="controls-focus" class="toolbar-group">
+        <label class="toolbar-item">
+          <span>Antenati:</span>
+          <select id="opt-ancestor-gens">
+            <option value="2">2 gen.</option>
+            <option value="3">3 gen.</option>
+            <option value="4" selected>4 gen.</option>
+            <option value="5">5 gen.</option>
+            <option value="6">6 gen.</option>
+            <option value="7">7 gen.</option>
+          </select>
+        </label>
+        <label class="toolbar-item">
+          <span>Discendenti:</span>
+          <select id="opt-descendant-gens">
+            <option value="2">2 gen.</option>
+            <option value="3">3 gen.</option>
+            <option value="4" selected>4 gen.</option>
+            <option value="5">5 gen.</option>
+            <option value="6">6 gen.</option>
+          </select>
+        </label>
+        <label class="toolbar-item checkbox-item">
+          <input type="checkbox" id="opt-show-siblings" checked />
+          <span>Fratelli</span>
+        </label>
+      </div>
+
+      <!-- Fan Mode Controls -->
+      <div id="controls-fan" class="toolbar-group hidden">
+        <label class="toolbar-item">
+          <span>Generazioni:</span>
+          <select id="opt-fan-gens">
+            <option value="3">3 anelli</option>
+            <option value="4">4 anelli</option>
+            <option value="5" selected>5 anelli</option>
+            <option value="6">6 anelli</option>
+            <option value="7">7 anelli</option>
+          </select>
+        </label>
+        <label class="toolbar-item">
+          <span>Apertura:</span>
+          <select id="opt-fan-angle">
+            <option value="180">180° Semicerchio</option>
+            <option value="220" selected>220° Ventaglio ampio</option>
+            <option value="360">360° Ruota completa</option>
+          </select>
+        </label>
+      </div>
+
+      <!-- Full Mode Controls -->
+      <div id="controls-full" class="toolbar-group hidden">
+        <label class="toolbar-item">
+          <span>Filtra Cognome:</span>
+          <select id="opt-surname-filter">
+            <option value="">Tutti i cognomi (Albero intero)</option>
+          </select>
+        </label>
+      </div>
+
+      <div class="toolbar-divider"></div>
+
+      <!-- Shared Controls -->
+      <div id="controls-shared" class="toolbar-group">
+        <label class="toolbar-item checkbox-item" id="compact-toggle-wrap">
+          <input type="checkbox" id="opt-compact-cards" />
+          <span>Compatto</span>
+        </label>
+        <button id="go-home-person-btn" class="toolbar-btn" title="Torna alla persona radice predefinita">
+          🏠 Radice
+        </button>
+      </div>
+    </div>
+
+    <!-- KINSHIP / RELATIONSHIP PATH CALCULATOR PANEL -->
+    <section id="kinship-panel" class="kinship-panel hidden">
+      <div class="kinship-header">
+        <div class="kinship-title-row">
+          <span class="kinship-badge-icon">🔗</span>
+          <div>
+            <h3>Calcolo Grado di Parentela &amp; Linea di Legame</h3>
+            <p>Seleziona due persone per calcolare la parentela ed evidenziare la linea che le unisce sull'albero</p>
+          </div>
+        </div>
+        <button id="close-kinship-btn" class="icon-btn sm" title="Chiudi e rimuovi evidenziazione">✕</button>
+      </div>
+
+      <div class="kinship-selectors">
+        <div class="kinship-picker">
+          <label>Persona A (Partenza)</label>
+          <div class="picker-autocomplete">
+            <input type="text" id="kinship-input-a" placeholder="Digita nome o cognome..." autocomplete="off" />
+            <div id="kinship-dropdown-a" class="picker-dropdown hidden"></div>
+          </div>
+        </div>
+
+        <button id="kinship-swap-btn" class="icon-btn" title="Inverti Persona A e Persona B">⇄</button>
+
+        <div class="kinship-picker">
+          <label>Persona B (Destinazione)</label>
+          <div class="picker-autocomplete">
+            <input type="text" id="kinship-input-b" placeholder="Digita nome o cognome..." autocomplete="off" />
+            <div id="kinship-dropdown-b" class="picker-dropdown hidden"></div>
+          </div>
+        </div>
+
+        <button id="kinship-clear-btn" class="action-btn" title="Azzera selezione">Pulisci</button>
+      </div>
+
+      <div id="kinship-result-box" class="kinship-result hidden">
+        <div class="kinship-summary">
+          <div class="kinship-relation-Chip" id="kinship-relation-title">—</div>
+          <div class="kinship-relation-sub" id="kinship-relation-subtitle">—</div>
+        </div>
+        <div id="kinship-steps-chain" class="kinship-steps-chain"></div>
+      </div>
+    </section>
+
+    <!-- SVG TREE CANVAS -->
+    <div id="tree-canvas-container" class="tree-canvas-container"></div>
+
+    <!-- TABLE / DIRECTORY VIEW -->
+    <div id="table-view-container" class="table-view-container hidden">
+      <div class="table-toolbar">
+        <div class="table-filters">
+          <input type="text" id="table-search-input" placeholder="Filtra per nome, cognome, luogo, occupazione, note..." />
+          <select id="table-sex-filter">
+            <option value="">Tutti i sessi</option>
+            <option value="M">Uomini (M)</option>
+            <option value="F">Donne (F)</option>
+          </select>
+          <select id="table-photo-filter">
+            <option value="">Tutte le persone</option>
+            <option value="with_photo">Con foto profilo</option>
+            <option value="living">Viventi</option>
+            <option value="deceased">Deceduti</option>
+          </select>
+          <select id="table-sort-by">
+            <option value="surname">Ordina per Cognome</option>
+            <option value="givenName">Ordina per Nome</option>
+            <option value="birthYearAsc">Anno di nascita (crescente)</option>
+            <option value="birthYearDesc">Anno di nascita (decrescente)</option>
+          </select>
+        </div>
+        <div id="table-count-label" class="table-count">0 persone</div>
+      </div>
+      <div class="table-scroll-wrap">
+        <table class="people-table">
+          <thead>
+            <tr>
+              <th>Persona</th>
+              <th>Sesso</th>
+              <th>Nascita</th>
+              <th>Decesso</th>
+              <th>Genitori</th>
+              <th>Coniugi</th>
+              <th>Azioni</th>
+            </tr>
+          </thead>
+          <tbody id="people-table-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- BOTTOM RIGHT ZOOM CONTROLS & MINIMAP -->
+    <div id="canvas-controls" class="canvas-controls">
+      <div id="minimap-container" class="minimap-box" title="Minimappa dell'albero">
+        <canvas width="170" height="115"></canvas>
+      </div>
+      <div class="zoom-buttons">
+        <button id="zoom-in-btn" class="ctrl-btn" title="Ingrandisci (+)">＋</button>
+        <span id="zoom-level-indicator" class="zoom-indicator">100%</span>
+        <button id="zoom-out-btn" class="ctrl-btn" title="Rimpicciolisci (-)">－</button>
+        <button id="zoom-fit-btn" class="ctrl-btn" title="Adatta tutto allo schermo">⛶</button>
+        <button id="zoom-center-btn" class="ctrl-btn" title="Centra sulla persona attiva">⌖</button>
+      </div>
+    </div>
+
+    <!-- RIGHT SIDE PERSON INSPECTOR & EDITOR DRAWER -->
+    <aside id="person-drawer" class="person-drawer hidden">
+      <div class="drawer-header">
+        <div class="drawer-person-summary">
+          <div id="drawer-avatar" class="drawer-avatar" title="Clicca per vedere o cambiare la foto"></div>
+          <div class="drawer-title-info">
+            <h2 id="drawer-full-name">Nome Persona</h2>
+            <p id="drawer-life-summary" class="drawer-subtitle">—</p>
+            <div class="drawer-quick-pills">
+              <button id="drawer-focus-btn" class="mini-pill-btn primary" title="Centra l'albero su questa persona">
+                🎯 Centra qui
+              </button>
+              <button id="drawer-kinship-btn" class="mini-pill-btn" title="Calcola parentela a partire da questa persona">
+                🔗 Parentela
+              </button>
+              <button id="drawer-set-root-btn" class="mini-pill-btn" title="Imposta come persona principale all'avvio">
+                ⭐ Imposta radice
+              </button>
+            </div>
+          </div>
+        </div>
+        <button id="close-drawer-btn" class="icon-btn" title="Chiudi scheda (Esc)">✕</button>
+      </div>
+
+      <!-- DRAWER TABS -->
+      <div class="drawer-tabs">
+        <button class="drawer-tab active" data-tab="profile">📝 Dati</button>
+        <button class="drawer-tab" data-tab="family">👨‍👩‍👧‍👦 Famiglia</button>
+        <button class="drawer-tab" data-tab="events">📅 Eventi</button>
+        <button class="drawer-tab" data-tab="media">🖼️ Media <span id="drawer-media-count" class="tab-badge">0</span></button>
+      </div>
+
+      <!-- TAB 1: PROFILE & EDIT FORM -->
+      <div id="tab-content-profile" class="drawer-tab-content active">
+        <form id="person-edit-form" class="editor-form">
+          <div class="form-section-title">Anagrafica</div>
+          <div class="form-row two-cols">
+            <div class="form-group">
+              <label>Nome</label>
+              <input type="text" id="edit-givenName" placeholder="Es. Gaetano" />
+            </div>
+            <div class="form-group">
+              <label>Cognome</label>
+              <input type="text" id="edit-surname" placeholder="Es. Bellanti" />
+            </div>
+          </div>
+
+          <div class="form-row two-cols">
+            <div class="form-group">
+              <label>Cognome da sposata</label>
+              <input type="text" id="edit-marriedSurname" placeholder="Opzionale" />
+            </div>
+            <div class="form-group">
+              <label>Sesso</label>
+              <select id="edit-sex">
+                <option value="M">Maschile (M)</option>
+                <option value="F">Femminile (F)</option>
+                <option value="U">Non specificato (U)</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-row two-cols">
+            <div class="form-group">
+              <label>Prefisso / Titolo</label>
+              <input type="text" id="edit-prefix" placeholder="Es. Dott., Don" />
+            </div>
+            <div class="form-group">
+              <label>Suffisso</label>
+              <input type="text" id="edit-suffix" placeholder="Es. Jr., Sr." />
+            </div>
+          </div>
+
+          <div class="form-section-title">Nascita e Battesimo</div>
+          <div class="form-row two-cols">
+            <div class="form-group">
+              <label>Data di Nascita</label>
+              <input type="text" id="edit-birthDate" placeholder="Es. 8 MAR 1987 o 08/03/1987" />
+            </div>
+            <div class="form-group">
+              <label>Luogo di Nascita</label>
+              <input type="text" id="edit-birthPlace" placeholder="Es. Agrigento, Sicilia, Italia" />
+            </div>
+          </div>
+
+          <div class="form-row two-cols">
+            <div class="form-group">
+              <label>Data di Battesimo</label>
+              <input type="text" id="edit-chrDate" placeholder="Es. 15 APR 1987" />
+            </div>
+            <div class="form-group">
+              <label>Luogo di Battesimo</label>
+              <input type="text" id="edit-chrPlace" placeholder="Chiesa / Comune" />
+            </div>
+          </div>
+
+          <div class="form-section-title">
+            <span>Decesso e Sepoltura</span>
+            <label class="inline-check">
+              <input type="checkbox" id="edit-isDeceased" />
+              <span>Persona deceduta</span>
+            </label>
+          </div>
+
+          <div id="deceased-fields-group">
+            <div class="form-row two-cols">
+              <div class="form-group">
+                <label>Data di Decesso</label>
+                <input type="text" id="edit-deathDate" placeholder="Es. 28 FEB 2018" />
+              </div>
+              <div class="form-group">
+                <label>Luogo di Decesso</label>
+                <input type="text" id="edit-deathPlace" placeholder="Es. Palma di Montechiaro" />
+              </div>
+            </div>
+
+            <div class="form-row two-cols">
+              <div class="form-group">
+                <label>Causa del decesso</label>
+                <input type="text" id="edit-deathCause" placeholder="Es. Vecchiaia / Naturale" />
+              </div>
+              <div class="form-group">
+                <label>Età al decesso</label>
+                <input type="text" id="edit-deathAge" placeholder="Es. 92" />
+              </div>
+            </div>
+
+            <div class="form-row two-cols">
+              <div class="form-group">
+                <label>Data di Sepoltura</label>
+                <input type="text" id="edit-burialDate" placeholder="Data sepoltura" />
+              </div>
+              <div class="form-group">
+                <label>Luogo di Sepoltura</label>
+                <input type="text" id="edit-burialPlace" placeholder="Cimitero / Città" />
+              </div>
+            </div>
+          </div>
+
+          <div class="form-section-title">Occupazione, Contatti &amp; Note</div>
+          <div class="form-group">
+            <label>Professione / Occupazione</label>
+            <input type="text" id="edit-occupation" placeholder="Es. Fotografo, Agricoltore..." />
+          </div>
+
+          <div class="form-row two-cols">
+            <div class="form-group">
+              <label>Residenza / Indirizzo</label>
+              <input type="text" id="edit-address" placeholder="Città o indirizzo" />
+            </div>
+            <div class="form-group">
+              <label>Email</label>
+              <input type="text" id="edit-email" placeholder="email@esempio.it" />
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label>Biografia e Note</label>
+            <textarea id="edit-notes" rows="4" placeholder="Storia familiare, aneddoti, note..."></textarea>
+          </div>
+
+          <div class="drawer-footer-actions">
+            <button type="submit" class="action-btn primary-btn full-w">💾 Salva Modifiche</button>
+            <button type="button" id="delete-person-btn" class="action-btn danger-btn" title="Elimina questa persona dall'albero">
+              🗑️ Elimina Persona
+            </button>
+          </div>
+        </form>
+      </div>
+
+      <!-- TAB 2: FAMILY & RELATIONSHIPS -->
+      <div id="tab-content-family" class="drawer-tab-content hidden">
+        <div class="family-quick-add-grid">
+          <button class="quick-rel-btn" data-rel="father">➕ Aggiungi Padre</button>
+          <button class="quick-rel-btn" data-rel="mother">➕ Aggiungi Madre</button>
+          <button class="quick-rel-btn" data-rel="spouse">💍 Aggiungi Coniuge</button>
+          <button class="quick-rel-btn" data-rel="child">👶 Aggiungi Figlio/a</button>
+          <button class="quick-rel-btn" data-rel="sibling">👫 Aggiungi Fratello/Sorella</button>
+        </div>
+
+        <div id="drawer-family-lists" class="family-lists-container"></div>
+      </div>
+
+      <!-- TAB 3: LIFE EVENTS & TIMELINE -->
+      <div id="tab-content-events" class="drawer-tab-content hidden">
+        <div class="events-header-row">
+          <span>Cronologia degli eventi della vita</span>
+          <button id="add-custom-event-btn" class="mini-pill-btn primary">➕ Nuovo Evento</button>
+        </div>
+        <div id="drawer-events-list" class="events-timeline"></div>
+      </div>
+
+      <!-- TAB 4: MEDIA & DOCUMENTS -->
+      <div id="tab-content-media" class="drawer-tab-content hidden">
+        <div class="media-upload-card">
+          <label class="upload-dropzone" for="media-file-input">
+            <span class="upload-icon">📷</span>
+            <div>
+              <strong>Carica foto o documento (JPG, PNG, PDF)</strong>
+              <p>I file vengono salvati localmente sul tuo Beelink</p>
+            </div>
+            <input type="file" id="media-file-input" accept="image/*,.pdf" class="hidden" />
+          </label>
+        </div>
+        <div id="drawer-media-gallery" class="media-gallery-grid"></div>
+      </div>
+    </aside>
+  </main>
+
+  <!-- MODAL: ADD PERSON / LINK RELATIONSHIP -->
+  <div id="relationship-modal" class="modal-backdrop hidden">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 id="rel-modal-title">Aggiungi Persona o Legame</h3>
+        <button id="close-rel-modal-btn" class="icon-btn sm">✕</button>
+      </div>
+
+      <div class="modal-mode-tabs" id="rel-modal-mode-switch">
+        <button class="modal-tab active" data-relmode="create">✨ Crea Nuova Persona</button>
+        <button class="modal-tab" data-relmode="existing">🔗 Collega Persona Esistente</button>
+      </div>
+
+      <form id="rel-modal-form" class="modal-body">
+        <input type="hidden" id="rel-target-id" />
+        <input type="hidden" id="rel-link-type" />
+
+        <div id="rel-target-banner" class="rel-context-banner"></div>
+
+        <!-- Create New Person Fields -->
+        <div id="rel-create-fields">
+          <div class="form-row two-cols">
+            <div class="form-group">
+              <label>Nome *</label>
+              <input type="text" id="new-givenName" placeholder="Nome" />
+            </div>
+            <div class="form-group">
+              <label>Cognome *</label>
+              <input type="text" id="new-surname" placeholder="Cognome" />
+            </div>
+          </div>
+
+          <div class="form-row two-cols">
+            <div class="form-group">
+              <label>Sesso</label>
+              <select id="new-sex">
+                <option value="M">Maschile (M)</option>
+                <option value="F">Femminile (F)</option>
+                <option value="U">Non specificato (U)</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Professione</label>
+              <input type="text" id="new-occupation" placeholder="Opzionale" />
+            </div>
+          </div>
+
+          <div class="form-row two-cols">
+            <div class="form-group">
+              <label>Data di Nascita</label>
+              <input type="text" id="new-birthDate" placeholder="Es. 12 MAG 1950" />
+            </div>
+            <div class="form-group">
+              <label>Luogo di Nascita</label>
+              <input type="text" id="new-birthPlace" placeholder="Città" />
+            </div>
+          </div>
+
+          <div class="form-row two-cols">
+            <div class="form-group">
+              <label>Data di Decesso (se deceduto/a)</label>
+              <input type="text" id="new-deathDate" placeholder="Es. 2020" />
+            </div>
+            <div class="form-group">
+              <label>Luogo di Decesso</label>
+              <input type="text" id="new-deathPlace" placeholder="Città" />
+            </div>
+          </div>
+        </div>
+
+        <!-- Link Existing Person Fields -->
+        <div id="rel-existing-fields" class="hidden">
+          <div class="form-group">
+            <label>Cerca e seleziona la persona già presente nell'albero</label>
+            <input type="text" id="existing-person-search" placeholder="Digita nome o cognome..." autocomplete="off" />
+            <input type="hidden" id="existing-person-selected-id" />
+            <div id="existing-person-list" class="existing-candidates-list"></div>
+          </div>
+        </div>
+
+        <!-- Extra Marriage Fields if spouse -->
+        <div id="rel-marriage-fields" class="hidden">
+          <div class="form-section-title">Dettagli Matrimonio (Opzionale)</div>
+          <div class="form-row two-cols">
+            <div class="form-group">
+              <label>Data di Matrimonio</label>
+              <input type="text" id="rel-marriageDate" placeholder="Es. 18 APR 2018" />
+            </div>
+            <div class="form-group">
+              <label>Luogo di Matrimonio</label>
+              <input type="text" id="rel-marriagePlace" placeholder="Es. Palma di Montechiaro" />
+            </div>
+          </div>
+        </div>
+
+        <!-- Parent family picker if adding child and target has multiple marriages -->
+        <div id="rel-family-select-group" class="form-group hidden">
+          <label>Seleziona l'unione/matrimonio</label>
+          <select id="rel-family-select"></select>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" id="cancel-rel-modal-btn" class="action-btn">Annulla</button>
+          <button type="submit" class="action-btn primary-btn">Conferma e Salva</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: IMPORT GEDCOM -->
+  <div id="import-modal" class="modal-backdrop hidden">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>📥 Importa File GEDCOM (.ged)</h3>
+        <button id="close-import-modal-btn" class="icon-btn sm">✕</button>
+      </div>
+      <form id="import-gedcom-form" class="modal-body">
+        <p class="modal-help-text">
+          Seleziona un file <code>.ged</code> esportato da MyHeritage, Ancestry o un altro programma genealogico.
+          L'albero attuale verrà salvato automaticamente in copia di backup prima dell'importazione, e le foto collegate verranno scaricate localmente.
+        </p>
+        <div class="form-group">
+          <input type="file" id="gedcom-file-input" accept=".ged" required />
+        </div>
+        <div class="modal-footer">
+          <button type="button" id="cancel-import-modal-btn" class="action-btn">Annulla</button>
+          <button type="submit" class="action-btn primary-btn">Carica e Importa</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- LIGHTBOX FOR PHOTOS -->
+  <div id="media-lightbox" class="modal-backdrop hidden">
+    <div class="lightbox-content">
+      <button id="close-lightbox-btn" class="lightbox-close">✕</button>
+      <img id="lightbox-img" src="" alt="Foto" />
+      <div id="lightbox-caption" class="lightbox-caption"></div>
+    </div>
+  </div>
+
+  <!-- TOAST NOTIFICATION -->
+  <div id="toast-container" class="toast-container"></div>
+
+  <script src="/js/kinship.js"></script>
+  <script src="/js/tree-engine.js"></script>
+  <script src="/js/app.js"></script>
+</body>
+</html>

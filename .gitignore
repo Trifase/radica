@@ -1,0 +1,29 @@
+# Personal GEDCOM & Tree Data (NEVER commit)
+*.ged
+*.gedcom
+data/
+tree*.json
+
+# Secrets & Environment
+.env
+.env.*
+*.pem
+*.key
+*secret*
+*credentials*
+
+# Python & Build Artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+*.tar.gz
+*.zip
+*.log
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
