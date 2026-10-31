@@ -1,0 +1,356 @@
+0 HEAD
+1 GEDC
+2 VERS 5.5.1
+2 FORM LINEAGE-LINKED
+1 CHAR UTF-8
+1 SOUR RADICA_DEMO
+2 NAME Ràdica — Albero Genealogico Dimostrativo
+1 FILE famiglia_rossi_esempio.ged
+0 @I1@ INDI
+1 NAME Marco /Rossi/
+2 GIVN Marco
+2 SURN Rossi
+1 SEX M
+1 BIRT
+2 DATE 14 APR 1986
+2 PLAC Firenze, Toscana, Italia
+1 OCCU Architetto
+1 NOTE Appassionato di storia locale e fotografia analogica.
+1 FAMC @F1@
+1 FAMS @F2@
+0 @I2@ INDI
+1 NAME Elena /Conti/
+2 GIVN Elena
+2 SURN Conti
+1 SEX F
+1 BIRT
+2 DATE 22 SEP 1988
+2 PLAC Siena, Toscana, Italia
+1 OCCU Restauratrice d'arte
+1 FAMC @F6@
+1 FAMS @F2@
+0 @I3@ INDI
+1 NAME Lorenzo /Rossi/
+2 GIVN Lorenzo
+2 SURN Rossi
+1 SEX M
+1 BIRT
+2 DATE 08 MAY 1956
+2 PLAC Firenze, Toscana, Italia
+1 OCCU Docente universitario di Storia
+1 FAMC @F3@
+1 FAMS @F1@
+0 @I4@ INDI
+1 NAME Chiara /Ferretti/
+2 GIVN Chiara
+2 SURN Ferretti
+1 SEX F
+1 BIRT
+2 DATE 19 NOV 1958
+2 PLAC Bologna, Emilia-Romagna, Italia
+1 OCCU Medico pediatra
+1 FAMC @F4@
+1 FAMS @F1@
+0 @I5@ INDI
+1 NAME Sofia /Rossi/
+2 GIVN Sofia
+2 SURN Rossi
+1 SEX F
+1 BIRT
+2 DATE 03 FEB 1983
+2 PLAC Firenze, Toscana, Italia
+1 OCCU Ingegnere ambientale
+1 FAMC @F1@
+1 FAMS @F5@
+0 @I6@ INDI
+1 NAME Davide /Rossi/
+2 GIVN Davide
+2 SURN Rossi
+1 SEX M
+1 BIRT
+2 DATE 27 JUL 1991
+2 PLAC Firenze, Toscana, Italia
+1 OCCU Musicista e compositore
+1 FAMC @F1@
+0 @I7@ INDI
+1 NAME Matteo /Rossi/
+2 GIVN Matteo
+2 SURN Rossi
+1 SEX M
+1 BIRT
+2 DATE 11 JUN 2016
+2 PLAC Firenze, Toscana, Italia
+1 FAMC @F2@
+0 @I8@ INDI
+1 NAME Alice /Rossi/
+2 GIVN Alice
+2 SURN Rossi
+1 SEX F
+1 BIRT
+2 DATE 29 OCT 2019
+2 PLAC Firenze, Toscana, Italia
+1 FAMC @F2@
+0 @I9@ INDI
+1 NAME Giuseppe /Rossi/
+2 GIVN Giuseppe
+2 SURN Rossi
+1 SEX M
+1 BIRT
+2 DATE 12 MAR 1926
+2 PLAC Lucca, Toscana, Italia
+1 DEAT
+2 DATE 04 JAN 2008
+2 PLAC Firenze, Toscana, Italia
+1 OCCU Maestro ebanista
+1 FAMC @F7@
+1 FAMS @F3@
+0 @I10@ INDI
+1 NAME Margherita /Lombardi/
+2 GIVN Margherita
+2 SURN Lombardi
+1 SEX F
+1 BIRT
+2 DATE 25 AUG 1929
+2 PLAC Pisa, Toscana, Italia
+1 DEAT
+2 DATE 18 NOV 2014
+2 PLAC Firenze, Toscana, Italia
+1 OCCU Insegnante elementare
+1 FAMS @F3@
+0 @I11@ INDI
+1 NAME Alberto /Ferretti/
+2 GIVN Alberto
+2 SURN Ferretti
+1 SEX M
+1 BIRT
+2 DATE 09 OCT 1928
+2 PLAC Bologna, Emilia-Romagna, Italia
+1 DEAT
+2 DATE 15 MAY 2011
+2 PLAC Bologna, Emilia-Romagna, Italia
+1 OCCU Tipografo editore
+1 FAMC @F8@
+1 FAMS @F4@
+0 @I12@ INDI
+1 NAME Teresa /Marchetti/
+2 GIVN Teresa
+2 SURN Marchetti
+1 SEX F
+1 BIRT
+2 DATE 17 JAN 1932
+2 PLAC Modena, Emilia-Romagna, Italia
+1 DEAT
+2 DATE 22 SEP 2018
+2 PLAC Bologna, Emilia-Romagna, Italia
+1 OCCU Bibliotecaria
+1 FAMS @F4@
+0 @I13@ INDI
+1 NAME Alessandro /Galli/
+2 GIVN Alessandro
+2 SURN Galli
+1 SEX M
+1 BIRT
+2 DATE 05 DEC 1981
+2 PLAC Milano, Lombardia, Italia
+1 OCCU Ricercatore biotecnologo
+1 FAMS @F5@
+0 @I14@ INDI
+1 NAME Tommaso /Galli/
+2 GIVN Tommaso
+2 SURN Galli
+1 SEX M
+1 BIRT
+2 DATE 19 APR 2014
+2 PLAC Milano, Lombardia, Italia
+1 FAMC @F5@
+0 @I15@ INDI
+1 NAME Camilla /Galli/
+2 GIVN Camilla
+2 SURN Galli
+1 SEX F
+1 BIRT
+2 DATE 07 AUG 2017
+2 PLAC Milano, Lombardia, Italia
+1 FAMC @F5@
+0 @I16@ INDI
+1 NAME Roberto /Conti/
+2 GIVN Roberto
+2 SURN Conti
+1 SEX M
+1 BIRT
+2 DATE 30 JUN 1957
+2 PLAC Siena, Toscana, Italia
+1 OCCU Agronomo viticoltore
+1 FAMS @F6@
+0 @I17@ INDI
+1 NAME Laura /Moretti/
+2 GIVN Laura
+2 SURN Moretti
+1 SEX F
+1 BIRT
+2 DATE 14 FEB 1960
+2 PLAC Arezzo, Toscana, Italia
+1 OCCU Farmacista
+1 FAMS @F6@
+0 @I18@ INDI
+1 NAME Federico /Conti/
+2 GIVN Federico
+2 SURN Conti
+1 SEX M
+1 BIRT
+2 DATE 02NOV 1992
+2 PLAC Siena, Toscana, Italia
+1 OCCU Enologo
+1 FAMC @F6@
+0 @I19@ INDI
+1 NAME Vittorio /Rossi/
+2 GIVN Vittorio
+2 SURN Rossi
+1 SEX M
+1 BIRT
+2 DATE 03 MAY 1898
+2 PLAC Lucca, Toscana, Italia
+1 DEAT
+2 DATE 19 DEC 1976
+2 PLAC Lucca, Toscana, Italia
+1 OCCU Orologiaio
+1 FAMS @F7@
+0 @I20@ INDI
+1 NAME Adele /Sartori/
+2 GIVN Adele
+2 SURN Sartori
+1 SEX F
+1 BIRT
+2 DATE 21 JUL 1901
+2 PLAC Pistoia, Toscana, Italia
+1 DEAT
+2 DATE 08 APR 1984
+2 PLAC Lucca, Toscana, Italia
+1 OCCU Sarta ricamatrice
+1 FAMS @F7@
+0 @I21@ INDI
+1 NAME Enrico /Rossi/
+2 GIVN Enrico
+2 SURN Rossi
+1 SEX M
+1 BIRT
+2 DATE 14 SEP 1960
+2 PLAC Firenze, Toscana, Italia
+1 OCCU Giornalista
+1 FAMC @F3@
+1 FAMS @F9@
+0 @I22@ INDI
+1 NAME Valeria /Rinaldi/
+2 GIVN Valeria
+2 SURN Rinaldi
+1 SEX F
+1 BIRT
+2 DATE 28 MAR 1963
+2 PLAC Roma, Lazio, Italia
+1 OCCU Traduttrice letteraria
+1 FAMS @F9@
+0 @I23@ INDI
+1 NAME Beatrice /Rossi/
+2 GIVN Beatrice
+2 SURN Rossi
+1 SEX F
+1 BIRT
+2 DATE 16 NOV 1990
+2 PLAC Roma, Lazio, Italia
+1 OCCU Grafica editoriale
+1 FAMC @F9@
+0 @I24@ INDI
+1 NAME Cesare /Ferretti/
+2 GIVN Cesare
+2 SURN Ferretti
+1 SEX M
+1 BIRT
+2 DATE 11 FEB 1900
+2 PLAC Bologna, Emilia-Romagna, Italia
+1 DEAT
+2 DATE 02 OCT 1979
+2 PLAC Bologna, Emilia-Romagna, Italia
+1 OCCU Libraio antiquario
+1 FAMS @F8@
+0 @I25@ INDI
+1 NAME Clara /Bianchi/
+2 GIVN Clara
+2 SURN Bianchi
+1 SEX F
+1 BIRT
+2 DATE 09 JUN 1904
+2 PLAC Ferrara, Emilia-Romagna, Italia
+1 DEAT
+2 DATE 27 MAR 1988
+2 PLAC Bologna, Emilia-Romagna, Italia
+1 FAMS @F8@
+0 @F1@ FAM
+1 HUSB @I3@
+1 WIFE @I4@
+1 CHIL @I5@
+1 CHIL @I1@
+1 CHIL @I6@
+1 MARR
+2 DATE 18 JUN 1981
+2 PLAC Firenze, Toscana, Italia
+0 @F2@ FAM
+1 HUSB @I1@
+1 WIFE @I2@
+1 CHIL @I7@
+1 CHIL @I8@
+1 MARR
+2 DATE 12 SEP 2014
+2 PLAC Siena, Toscana, Italia
+0 @F3@ FAM
+1 HUSB @I9@
+1 WIFE @I10@
+1 CHIL @I3@
+1 CHIL @I21@
+1 MARR
+2 DATE 24 APR 1954
+2 PLAC Firenze, Toscana, Italia
+0 @F4@ FAM
+1 HUSB @I11@
+1 WIFE @I12@
+1 CHIL @I4@
+1 MARR
+2 DATE 10 OCT 1956
+2 PLAC Bologna, Emilia-Romagna, Italia
+0 @F5@ FAM
+1 HUSB @I13@
+1 WIFE @I5@
+1 CHIL @I14@
+1 CHIL @I15@
+1 MARR
+2 DATE 05 MAY 2012
+2 PLAC Milano, Lombardia, Italia
+0 @F6@ FAM
+1 HUSB @I16@
+1 WIFE @I17@
+1 CHIL @I2@
+1 CHIL @I18@
+1 MARR
+2 DATE 20 SEP 1986
+2 PLAC Siena, Toscana, Italia
+0 @F7@ FAM
+1 HUSB @I19@
+1 WIFE @I20@
+1 CHIL @I9@
+1 MARR
+2 DATE 15 MAY 1924
+2 PLAC Lucca, Toscana, Italia
+0 @F8@ FAM
+1 HUSB @I24@
+1 WIFE @I25@
+1 CHIL @I11@
+1 MARR
+2 DATE 08 NOV 1926
+2 PLAC Bologna, Emilia-Romagna, Italia
+0 @F9@ FAM
+1 HUSB @I21@
+1 WIFE @I22@
+1 CHIL @I23@
+1 MARR
+2 DATE 14 JUL 1988
+2 PLAC Roma, Lazio, Italia
+0 TRLR
