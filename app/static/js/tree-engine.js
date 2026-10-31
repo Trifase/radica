@@ -13,7 +13,7 @@ window.TreeEngine = (function () {
   const COMPACT_H = 62;
   const LEVEL_GAP_Y = 148;
   const SIBLING_GAP_X = 28;
-  const SPOUSE_GAP_X = 34;
+  const SPOUSE_GAP_X = 78;
 
   function escapeXml(unsafe) {
     if (!unsafe) return "";
@@ -128,6 +128,10 @@ window.TreeEngine = (function () {
       this.nodesLayer = document.createElementNS("http://www.w3.org/2000/svg", "g");
       this.nodesLayer.setAttribute("class", "tree-nodes-layer");
       this.viewport.appendChild(this.nodesLayer);
+
+      this.badgesLayer = document.createElementNS("http://www.w3.org/2000/svg", "g");
+      this.badgesLayer.setAttribute("class", "tree-badges-layer");
+      this.viewport.appendChild(this.badgesLayer);
 
       this.container.appendChild(this.svg);
     }
@@ -362,6 +366,7 @@ window.TreeEngine = (function () {
       this.linksLayer.innerHTML = "";
       this.kinshipLayer.innerHTML = "";
       this.nodesLayer.innerHTML = "";
+      if (this.badgesLayer) this.badgesLayer.innerHTML = "";
       this.nodePositions.clear();
 
       if (this.mode === "fan") {
@@ -439,7 +444,7 @@ window.TreeEngine = (function () {
 
         let width = cardW;
         if (leftBranch && rightBranch) {
-          width = leftBranch.width + rightBranch.width + gapX;
+          width = leftBranch.width + rightBranch.width + SPOUSE_GAP_X;
         } else if (leftBranch) {
           width = Math.max(cardW, leftBranch.width);
         } else if (rightBranch) {
@@ -465,7 +470,7 @@ window.TreeEngine = (function () {
         }
         const nextY = y - gapY;
         if (node.left && node.right) {
-          const totalW = node.left.width + node.right.width + gapX;
+          const totalW = node.left.width + node.right.width + SPOUSE_GAP_X;
           const leftCenter = centerX - totalW / 2 + node.left.width / 2;
           const rightCenter = centerX + totalW / 2 - node.right.width / 2;
           layoutAncestors(node.left, leftCenter, nextY);
@@ -1251,6 +1256,7 @@ window.TreeEngine = (function () {
     _drawConnectors(connectors, cardW, cardH) {
       const halfH = cardH / 2;
       let html = "";
+      let badgesHtml = "";
 
       for (const c of connectors) {
         const isHighlighted =
@@ -1261,11 +1267,11 @@ window.TreeEngine = (function () {
           // Horizontal marriage line between p1 and p2
           html += `<path class="${strokeClass} marriage-line" d="M ${c.p1.x} ${c.p1.y} L ${c.p2.x} ${c.p2.y}" />`;
 
-          // Marriage badge at midpoint
-          const badgeW = c.marriageYear ? 46 : 22;
-          html += `
-            <g class="marriage-badge" transform="translate(${c.mid.x}, ${c.mid.y})">
-              <rect x="${-badgeW / 2}" y="-10" width="${badgeW}" height="20" rx="10" class="marriage-pill" />
+          // Marriage badge at midpoint (rendered in badgesLayer above nodes)
+          const badgeW = c.marriageYear ? 58 : 26;
+          badgesHtml += `
+            <g class="marriage-badge" transform="translate(${c.mid.x}, ${c.mid.y})" filter="url(#card-shadow)">
+              <rect x="${-badgeW / 2}" y="-11" width="${badgeW}" height="22" rx="11" class="marriage-pill" />
               <text y="4" text-anchor="middle" class="marriage-pill-text">💍${
                 c.marriageYear ? " " + escapeXml(c.marriageYear) : ""
               }</text>
@@ -1274,7 +1280,7 @@ window.TreeEngine = (function () {
 
           if (c.type === "couple-children" && c.children.length > 0) {
             const busY = c.mid.y + halfH + 26;
-            html += `<path class="${strokeClass}" d="M ${c.mid.x} ${c.mid.y + 10} L ${c.mid.x} ${busY}" />`;
+            html += `<path class="${strokeClass}" d="M ${c.mid.x} ${c.mid.y + 11} L ${c.mid.x} ${busY}" />`;
 
             const xs = c.children.map((ch) => ch.x);
             const minX = Math.min(c.mid.x, ...xs);
@@ -1302,6 +1308,7 @@ window.TreeEngine = (function () {
       }
 
       this.linksLayer.innerHTML = html;
+      if (this.badgesLayer) this.badgesLayer.innerHTML = badgesHtml;
     }
 
     _drawKinshipOverlay() {

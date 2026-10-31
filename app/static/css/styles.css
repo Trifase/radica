@@ -641,15 +641,15 @@ body {
 }
 
 .marriage-pill {
-  fill: var(--marriage-pill-bg);
-  stroke: var(--border-strong);
-  stroke-width: 1.2px;
+  fill: var(--bg-surface-solid);
+  stroke: rgba(245, 158, 11, 0.55);
+  stroke-width: 1.5px;
 }
 
 .marriage-pill-text {
-  fill: var(--text-secondary);
-  font-size: 10px;
-  font-weight: 600;
+  fill: var(--text-primary);
+  font-size: 11px;
+  font-weight: 700;
 }
 
 /* KINSHIP GLOW OVERLAY */
