@@ -672,7 +672,7 @@ body {
   font-weight: 500;
 }
 
-/* INTER-BRANCH CONNECTION LINES & 360° RADIAL CONCENTRIC TREE */
+/* INTER-BRANCH CONNECTION LINES & UNIFIED GENERATION SWIMLANES */
 .cross-branch-link {
   fill: none;
   stroke: #38bdf8;
@@ -697,40 +697,26 @@ body {
   opacity: 0.78;
 }
 
-.radial-hub-ring {
-  fill: rgba(56, 189, 248, 0.04);
-  stroke: rgba(56, 189, 248, 0.28);
-  stroke-width: 2px;
-  stroke-dasharray: 6 4;
+.tree-link.active-fam-link {
+  stroke: #38bdf8 !important;
+  stroke-width: 3.2px !important;
 }
 
-.radial-guide-ring {
-  fill: none;
+.gen-swimlane-line {
   stroke: var(--border-color);
-  stroke-width: 1.2px;
-  stroke-dasharray: 4 7;
-  opacity: 0.55;
+  stroke-width: 1px;
+  stroke-dasharray: 6 8;
+  opacity: 0.42;
 }
 
-.radial-ring-label {
+.gen-swimlane-label {
   fill: var(--text-muted);
-  font-size: 11px;
+  font-size: 11.5px;
   font-weight: 700;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.05em;
   text-transform: uppercase;
-  opacity: 0.7;
-}
-
-.radial-pill-name {
-  fill: var(--text-primary);
-  font-size: 11px;
-  font-weight: 700;
-}
-
-.radial-pill-years {
-  fill: var(--text-secondary);
-  font-size: 9.5px;
-  font-weight: 500;
+  opacity: 0.55;
+  pointer-events: none;
 }
 
 /* KINSHIP GLOW OVERLAY */

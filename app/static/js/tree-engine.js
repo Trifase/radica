@@ -250,7 +250,7 @@ window.TreeEngine = (function () {
     }
 
     zoomAtPoint(factor, clientX, clientY) {
-      const nextScale = Math.min(2.8, Math.max(0.08, this.scale * factor));
+      const nextScale = Math.min(2.8, Math.max(0.025, this.scale * factor));
       const actualFactor = nextScale / this.scale;
       this.tx = clientX - (clientX - this.tx) * actualFactor;
       this.ty = clientY - (clientY - this.ty) * actualFactor;
@@ -285,7 +285,7 @@ window.TreeEngine = (function () {
     centerOnCoords(x, y, targetScale = null, animate = true) {
       const rect = this.container.getBoundingClientRect();
       if (targetScale !== null) {
-        this.scale = Math.min(2.5, Math.max(0.12, targetScale));
+        this.scale = Math.min(2.5, Math.max(0.025, targetScale));
       }
       this.tx = rect.width / 2 - x * this.scale;
       this.ty = rect.height / 2 - y * this.scale;
@@ -308,7 +308,7 @@ window.TreeEngine = (function () {
       const bh = Math.max(300, this.bounds.maxY - this.bounds.minY);
       const scaleX = (rect.width - padding * 2) / bw;
       const scaleY = (rect.height - padding * 2) / bh;
-      this.scale = Math.min(1.25, Math.max(0.1, Math.min(scaleX, scaleY)));
+      this.scale = Math.min(1.25, Math.max(0.025, Math.min(scaleX, scaleY)));
       const cx = (this.bounds.minX + this.bounds.maxX) / 2;
       const cy = (this.bounds.minY + this.bounds.maxY) / 2;
       this.tx = rect.width / 2 - cx * this.scale;
@@ -411,6 +411,8 @@ window.TreeEngine = (function () {
       if (autoCenter) {
         if (this.mode === "focus" && this.focusPersonId && this.nodePositions.has(this.focusPersonId)) {
           this.centerOnPerson(this.focusPersonId, 0.88, false);
+        } else if (this.mode === "full" && this.focusPersonId && this.nodePositions.has(this.focusPersonId)) {
+          this.centerOnPerson(this.focusPersonId, 0.36, false);
         } else {
           this.fitToScreen(60, false);
         }
@@ -1986,14 +1988,24 @@ window.TreeEngine = (function () {
     }
 
     // =========================================================================
-    // 4. 360° CONCENTRIC FULL TREE ("VISTA COMPLETA 360°")
-    //    - Maps 100% of individuals onto concentric genealogical rings around focusPerson
-    //    - Coupled family units on each ring + 0-crossing Polar Hermite radial curves
-    //    - Radially-oriented person pills with auto-flipped readable text
+    // 4. UNIFIED GENERATION-ALIGNED FULL TREE ("VISTA COMPLETA")
+    //    - Maps 100% of individuals into ONE unified top-down genealogical tree
+    //    - Strict chronological generation rows (Antenati at top -> Discendenti at bottom)
+    //    - Contour-packed Hourglass blocks + Per-row Interval Pocket Docking
+    //      so married-in spouses' parents/ancestors dock directly above/beside them
+    //    - Multi-track horizontal corridor bus routing (0 overlapping cards, 0 overlapping lines)
     // =========================================================================
     _renderFullTree() {
       const individuals = this.tree.individuals;
       const families = this.tree.families;
+
+      const cardW = this.compactCards ? COMPACT_W : CARD_W;
+      const cardH = this.compactCards ? COMPACT_H : CARD_H;
+      const halfW = cardW / 2;
+      const halfH = cardH / 2;
+      const spouseGap = this.compactCards ? 44 : 58;
+      const gapX = this.compactCards ? 26 : 36;
+      const gapY = this.compactCards ? 156 : 194;
 
       let activeIds = new Set(Object.keys(individuals));
       if (this.surnameFilter) {
@@ -2033,547 +2045,537 @@ window.TreeEngine = (function () {
           : Array.from(activeIds)[0];
       if (!focusId) return;
 
-      // 1. Build Coupled Family Units via BFS from focusId
-      const visited = new Set();
-      const units = [];
-      const personToUnit = new Map();
-      const queue = [];
-      const treeFamIds = new Set();
+      const placedNodes = new Map(); // pid -> { id, x, y, w, h, role }
+      const rowSpans = new Map(); // y -> Array<{ minX, maxX }>
+      const visitedP = new Set();
+      const visitedF = new Set();
+      const personQueue = [];
 
-      const makeUnit = (seedPid, ring, parentUnitIdx, viaPid = null, viaFamId = null) => {
-        if (!seedPid || !activeIds.has(seedPid) || visited.has(seedPid)) return null;
-        const members = [seedPid];
-        visited.add(seedPid);
+      // --- Contour & Interval Helpers ---
+      const mergeBounds = (bA, bB) => {
+        const res = new Map();
+        for (const [y, s] of bA.entries()) res.set(y, { minX: s.minX, maxX: s.maxX });
+        for (const [y, s] of bB.entries()) {
+          if (res.has(y)) {
+            const cur = res.get(y);
+            cur.minX = Math.min(cur.minX, s.minX);
+            cur.maxX = Math.max(cur.maxX, s.maxX);
+          } else {
+            res.set(y, { minX: s.minX, maxX: s.maxX });
+          }
+        }
+        return res;
+      };
 
-        let idx = 0;
-        while (idx < members.length) {
-          const cur = members[idx++];
-          const p = individuals[cur];
-          for (const fid of p?.fams || []) {
-            const fam = families[fid];
-            if (!fam) continue;
-            for (const spId of [fam.husband, fam.wife]) {
-              if (spId && activeIds.has(spId) && !visited.has(spId)) {
-                visited.add(spId);
-                members.push(spId);
-                treeFamIds.add(fid);
-              }
+      const shiftBounds = (b, dx) => {
+        const res = new Map();
+        for (const [y, s] of b.entries()) {
+          res.set(y, { minX: s.minX + dx, maxX: s.maxX + dx });
+        }
+        return res;
+      };
+
+      const shiftNodes = (nodesMap, dx) => {
+        const res = new Map();
+        for (const [pid, n] of nodesMap.entries()) {
+          res.set(pid, { ...n, x: n.x + dx });
+        }
+        return res;
+      };
+
+      const minShift = (leftB, rightB, sep = gapX) => {
+        if (!leftB || leftB.size === 0 || !rightB || rightB.size === 0) return 0;
+        let shift = null;
+        for (const [y, rSpan] of rightB.entries()) {
+          if (leftB.has(y)) {
+            const lSpan = leftB.get(y);
+            const needed = lSpan.maxX + sep - rSpan.minX;
+            if (shift === null || needed > shift) shift = needed;
+          }
+        }
+        if (shift === null) {
+          let maxL = -Infinity;
+          let minR = Infinity;
+          for (const s of leftB.values()) maxL = Math.max(maxL, s.maxX);
+          for (const s of rightB.values()) minR = Math.min(minR, s.minX);
+          shift = maxL + sep - minR;
+        }
+        return shift;
+      };
+
+      // Docks a block of nodes at the exact closest horizontal offset `bestDx` to `desiredDx`
+      // where none of its per-row contours overlap any already-occupied interval on that row.
+      const commitBlock = (nodesMap, desiredDx = 0) => {
+        if (!nodesMap || nodesMap.size === 0) return;
+
+        const blockB = new Map();
+        for (const n of nodesMap.values()) {
+          const cur = blockB.get(n.y);
+          const l = n.x - halfW;
+          const r = n.x + halfW;
+          if (cur) {
+            cur.minX = Math.min(cur.minX, l);
+            cur.maxX = Math.max(cur.maxX, r);
+          } else {
+            blockB.set(n.y, { minX: l, maxX: r });
+          }
+        }
+
+        // Compute forbidden dx intervals across all rows of blockB
+        const margin = gapX * 1.25;
+        const forbidden = [];
+        for (const [y, bSpan] of blockB.entries()) {
+          const occList = rowSpans.get(y);
+          if (!occList) continue;
+          for (const occ of occList) {
+            const fMin = occ.minX - bSpan.maxX - margin;
+            const fMax = occ.maxX - bSpan.minX + margin;
+            if (fMin < fMax) forbidden.push({ min: fMin, max: fMax });
+          }
+        }
+
+        let bestDx = desiredDx;
+        if (forbidden.length > 0) {
+          forbidden.sort((a, b) => a.min - b.min);
+          const merged = [forbidden[0]];
+          for (let i = 1; i < forbidden.length; i++) {
+            const last = merged[merged.length - 1];
+            const cur = forbidden[i];
+            if (cur.min <= last.max + 0.5) {
+              last.max = Math.max(last.max, cur.max);
+            } else {
+              merged.push({ min: cur.min, max: cur.max });
+            }
+          }
+          for (const iv of merged) {
+            if (desiredDx > iv.min && desiredDx < iv.max) {
+              const leftCand = iv.min - 1;
+              const rightCand = iv.max + 1;
+              bestDx =
+                Math.abs(desiredDx - leftCand) <= Math.abs(rightCand - desiredDx)
+                  ? leftCand
+                  : rightCand;
+              break;
             }
           }
         }
 
-        const uIdx = units.length;
-        for (const m of members) personToUnit.set(m, uIdx);
-        if (viaFamId) treeFamIds.add(viaFamId);
-
-        units.push({
-          idx: uIdx,
-          ring,
-          members,
-          parent: parentUnitIdx,
-          viaPid,
-          viaFamId,
-          children: [],
-          subW: 1,
-          theta: 0,
-          arcPx: 0,
-          halfAng: 0,
-        });
-        if (parentUnitIdx !== null && units[parentUnitIdx]) {
-          units[parentUnitIdx].children.push(uIdx);
-        }
-        queue.push(uIdx);
-        return uIdx;
-      };
-
-      makeUnit(focusId, 0, null, null, null);
-
-      const processQueue = () => {
-        while (queue.length > 0) {
-          const uIdx = queue.shift();
-          const u = units[uIdx];
-          const r = u.ring;
-          for (const m of u.members) {
-            const p = individuals[m];
-            // Children via fams
-            for (const fid of p?.fams || []) {
-              const fam = families[fid];
-              if (!fam) continue;
-              for (const cid of fam.children || []) {
-                if (activeIds.has(cid) && !visited.has(cid)) {
-                  makeUnit(cid, r + 1, uIdx, m, fid);
-                }
-              }
-            }
-            // Parents (or siblings if parents already visited/missing) via famc
-            for (const fid of p?.famc || []) {
-              const fam = families[fid];
-              if (!fam) continue;
-              const parSeed =
-                fam.husband && activeIds.has(fam.husband) && !visited.has(fam.husband)
-                  ? fam.husband
-                  : fam.wife && activeIds.has(fam.wife) && !visited.has(fam.wife)
-                  ? fam.wife
-                  : null;
-              if (parSeed) {
-                makeUnit(parSeed, r + 1, uIdx, m, fid);
-              } else {
-                for (const sibId of fam.children || []) {
-                  if (activeIds.has(sibId) && !visited.has(sibId)) {
-                    makeUnit(sibId, r + 1, uIdx, m, fid);
-                  }
-                }
-              }
-            }
-          }
-        }
-      };
-
-      processQueue();
-
-      // Include any remaining disconnected individuals on Ring 1
-      for (const pid of activeIds) {
-        if (!visited.has(pid)) {
-          makeUnit(pid, 1, 0, units[0]?.members[0] || focusId, null);
-          processQueue();
-        }
-      }
-
-      // 2. Compute Subtree Weights & Initial Angular Sectors [0, 2π)
-      const calcSubW = (uIdx) => {
-        const u = units[uIdx];
-        let w = u.members.length * (1 + u.ring * 0.25);
-        for (const cIdx of u.children) {
-          w += calcSubW(cIdx);
-        }
-        u.subW = Math.max(1, w);
-        return u.subW;
-      };
-      calcSubW(0);
-
-      const assignAngles = (uIdx, aStart, aEnd) => {
-        const u = units[uIdx];
-        u.theta = (aStart + aEnd) / 2;
-        if (u.children.length === 0) return;
-        const tot = u.children.reduce((acc, cIdx) => acc + units[cIdx].subW, 0);
-        let cur = aStart;
-        for (const cIdx of u.children) {
-          const span = (aEnd - aStart) * (units[cIdx].subW / tot);
-          assignAngles(cIdx, cur, cur + span);
-          cur += span;
-        }
-      };
-      assignAngles(0, -Math.PI, Math.PI);
-
-      // 3. Collect Units per Ring in strict DFS order (guarantees 0 angular inversions!)
-      const byRing = new Map();
-      let maxRing = 0;
-      const collectDfs = (uIdx) => {
-        const u = units[uIdx];
-        maxRing = Math.max(maxRing, u.ring);
-        if (!byRing.has(u.ring)) byRing.set(u.ring, []);
-        byRing.get(u.ring).push(uIdx);
-        for (const cIdx of u.children) collectDfs(cIdx);
-      };
-      collectDfs(0);
-
-      const pillW = this.compactCards ? 140 : 168;
-      const pillH = this.compactCards ? 36 : 44;
-      const spouseArcGap = this.compactCards ? 8 : 10;
-      const unitArcGap = this.compactCards ? 14 : 18;
-      const minRingStep = pillW + (this.compactCards ? 92 : 112);
-
-      const radii = new Map();
-      radii.set(0, 0);
-
-      for (let r = 1; r <= maxRing; r++) {
-        const uList = byRing.get(r) || [];
-        let totArc = 0;
-        for (const uIdx of uList) {
-          const u = units[uIdx];
-          const mCnt = u.members.length;
-          u.arcPx = mCnt * pillH + Math.max(0, mCnt - 1) * spouseArcGap + unitArcGap;
-          totArc += u.arcPx;
-        }
-        const prevR = radii.get(r - 1) || 0;
-        const minFirstR = r === 1 ? 285 : prevR + minRingStep;
-        const neededR = (totArc * 1.15) / (2 * Math.PI);
-        const ringR = Math.max(minFirstR, neededR);
-        radii.set(r, ringR);
-
-        for (const uIdx of uList) {
-          units[uIdx].halfAng = units[uIdx].arcPx / (2 * ringR);
-        }
-      }
-
-      // 4. Exact O(n) Forward-Backward Circular Spacing Projection + Parent-Child Alignment
-      const projectRingSpacing = (r) => {
-        const uList = byRing.get(r) || [];
-        const n = uList.length;
-        if (n <= 1) return;
-        for (let pass = 0; pass < 2; pass++) {
-          for (let i = 1; i < n; i++) {
-            const uPrev = units[uList[i - 1]];
-            const uCur = units[uList[i]];
-            const req = uPrev.theta + uPrev.halfAng + uCur.halfAng;
-            if (uCur.theta < req) uCur.theta = req;
-          }
-          const uFirst = units[uList[0]];
-          const uLast = units[uList[n - 1]];
-          const maxLast = uFirst.theta + 2 * Math.PI - (uLast.halfAng + uFirst.halfAng);
-          if (uLast.theta > maxLast) {
-            uLast.theta = maxLast;
-            for (let i = n - 2; i >= 0; i--) {
-              const uNext = units[uList[i + 1]];
-              const uCur = units[uList[i]];
-              const lim = uNext.theta - (uCur.halfAng + uNext.halfAng);
-              if (uCur.theta > lim) uCur.theta = lim;
-            }
-          }
-        }
-      };
-
-      for (let r = 1; r <= maxRing; r++) {
-        projectRingSpacing(r);
-      }
-      // Pull inner parents toward the mean angle of their children, then re-project
-      for (let r = maxRing - 1; r >= 1; r--) {
-        const uList = byRing.get(r) || [];
-        for (const uIdx of uList) {
-          const u = units[uIdx];
-          if (u.children.length > 0) {
-            const avgChild =
-              u.children.reduce((acc, cIdx) => acc + units[cIdx].theta, 0) / u.children.length;
-            u.theta = u.theta * 0.3 + avgChild * 0.7;
-          }
-        }
-        projectRingSpacing(r);
-      }
-
-      // 5. Compute Exact Polar & Cartesian Positions for Every Person
-      const memberPolar = new Map(); // pid -> { r, theta, x, y, ring }
-      const radialNodes = [];
-      const centerNodes = [];
-
-      // Ring 0 (Center Couple)
-      const rootUnit = units[0];
-      const rootCardW = this.compactCards ? COMPACT_W : CARD_W;
-      const rootCardH = this.compactCards ? COMPACT_H : CARD_H;
-      const rootSpGap = 58;
-      if (rootUnit) {
-        const mCnt = rootUnit.members.length;
-        const totRootW = mCnt * rootCardW + Math.max(0, mCnt - 1) * rootSpGap;
-        let curX = -totRootW / 2 + rootCardW / 2;
-        for (const pid of rootUnit.members) {
-          memberPolar.set(pid, { r: 0, theta: 0, x: curX, y: 0, ring: 0 });
-          this.nodePositions.set(pid, { x: curX, y: 0, w: rootCardW, h: rootCardH });
-          centerNodes.push({
+        for (const [pid, n] of nodesMap.entries()) {
+          const finalX = n.x + bestDx;
+          const nodeObj = {
             id: pid,
-            x: curX,
-            y: 0,
-            w: rootCardW,
-            h: rootCardH,
-            role: pid === focusId ? "focus" : "spouse",
-          });
-          curX += rootCardW + rootSpGap;
+            x: finalX,
+            y: n.y,
+            w: cardW,
+            h: cardH,
+            role: pid === focusId ? "focus" : "relative",
+          };
+          placedNodes.set(pid, nodeObj);
+          this.nodePositions.set(pid, { x: finalX, y: n.y, w: cardW, h: cardH });
+          personQueue.push(pid);
+        }
+
+        for (const [y, bSpan] of blockB.entries()) {
+          if (!rowSpans.has(y)) rowSpans.set(y, []);
+          rowSpans.get(y).push({ minX: bSpan.minX + bestDx, maxX: bSpan.maxX + bestDx });
+        }
+      };
+
+      // --- 1. Contour-Packed Descendant Subtree Builder ---
+      const buildContourDesc = (pid, y) => {
+        if (!pid || !activeIds.has(pid) || visitedP.has(pid)) {
+          return { nodes: new Map(), bounds: new Map(), anchorX: 0 };
+        }
+        visitedP.add(pid);
+        const p = individuals[pid];
+        const famsList = (p?.fams || []).filter((fid) => families[fid]);
+
+        const spouses = [];
+        const childIds = [];
+        for (const fid of famsList) {
+          visitedF.add(fid);
+          const fam = families[fid];
+          const spId = fam.husband === pid ? fam.wife : fam.husband;
+          if (spId && activeIds.has(spId) && !visitedP.has(spId)) {
+            visitedP.add(spId);
+            spouses.push({ spId, fid });
+          }
+          for (const cid of fam.children || []) {
+            if (activeIds.has(cid) && !visitedP.has(cid)) {
+              childIds.push(cid);
+            }
+          }
+        }
+
+        const nCards = 1 + spouses.length;
+        const coupleW = nCards * cardW + Math.max(0, nCards - 1) * spouseGap;
+
+        const childSubs = [];
+        for (const cid of childIds) {
+          if (!visitedP.has(cid)) {
+            const sub = buildContourDesc(cid, y + gapY);
+            if (sub.nodes.size > 0) childSubs.push(sub);
+          }
+        }
+
+        const nodes = new Map();
+        let bounds = new Map();
+
+        if (childSubs.length > 0) {
+          let accNodes = childSubs[0].nodes;
+          let accBounds = childSubs[0].bounds;
+          const anchors = [childSubs[0].anchorX];
+
+          for (let i = 1; i < childSubs.length; i++) {
+            const cSub = childSubs[i];
+            const dx = minShift(accBounds, cSub.bounds, gapX);
+            const sNodes = shiftNodes(cSub.nodes, dx);
+            const sBounds = shiftBounds(cSub.bounds, dx);
+            for (const [k, v] of sNodes.entries()) accNodes.set(k, v);
+            accBounds = mergeBounds(accBounds, sBounds);
+            anchors.push(cSub.anchorX + dx);
+          }
+
+          const midAnchor = (anchors[0] + anchors[anchors.length - 1]) / 2;
+          accNodes = shiftNodes(accNodes, -midAnchor);
+          accBounds = shiftBounds(accBounds, -midAnchor);
+          for (const [k, v] of accNodes.entries()) nodes.set(k, v);
+          bounds = accBounds;
+        }
+
+        if (spouses.length === 0) {
+          nodes.set(pid, { x: 0, y });
+        } else if (spouses.length === 1) {
+          const spId = spouses[0].spId;
+          const fam = families[spouses[0].fid];
+          const pidLeft = fam.husband === pid || (p?.sex === "M" && fam.wife === spId);
+          if (pidLeft) {
+            nodes.set(pid, { x: -coupleW / 2 + halfW, y });
+            nodes.set(spId, { x: coupleW / 2 - halfW, y });
+          } else {
+            nodes.set(spId, { x: -coupleW / 2 + halfW, y });
+            nodes.set(pid, { x: coupleW / 2 - halfW, y });
+          }
+        } else {
+          let curX = -coupleW / 2 + halfW;
+          nodes.set(pid, { x: curX, y });
+          for (const sp of spouses) {
+            curX += cardW + spouseGap;
+            nodes.set(sp.spId, { x: curX, y });
+          }
+        }
+
+        const rowB = new Map([[y, { minX: -coupleW / 2, maxX: coupleW / 2 }]]);
+        bounds = mergeBounds(bounds, rowB);
+        return { nodes, bounds, anchorX: nodes.get(pid)?.x || 0 };
+      };
+
+      // --- 2. Immediate Parent Couple Builder for Hourglass ---
+      const buildImmediateParents = (fid, y) => {
+        if (!fid || !families[fid] || visitedF.has(fid)) {
+          return { nodes: new Map(), bounds: new Map() };
+        }
+        visitedF.add(fid);
+        const fam = families[fid];
+        const hId =
+          fam.husband && activeIds.has(fam.husband) && !visitedP.has(fam.husband)
+            ? fam.husband
+            : null;
+        const wId =
+          fam.wife && activeIds.has(fam.wife) && !visitedP.has(fam.wife) ? fam.wife : null;
+
+        if (!hId && !wId) {
+          return { nodes: new Map(), bounds: new Map() };
+        }
+        if (hId) visitedP.add(hId);
+        if (wId) visitedP.add(wId);
+
+        const nodes = new Map();
+        let bounds = new Map();
+
+        if (hId && wId) {
+          const hx = -(cardW + spouseGap) / 2;
+          const wx = (cardW + spouseGap) / 2;
+          nodes.set(hId, { x: hx, y });
+          nodes.set(wId, { x: wx, y });
+          bounds.set(y, { minX: hx - halfW, maxX: wx + halfW });
+        } else {
+          const singleId = hId || wId;
+          nodes.set(singleId, { x: 0, y });
+          bounds.set(y, { minX: -halfW, maxX: halfW });
+        }
+        return { nodes, bounds };
+      };
+
+      // --- 3. Hourglass Family Block Builder (Parents at childY - gapY + Children/Descendants at childY..) ---
+      const makeHourglass = (fid, childY) => {
+        const fam = families[fid];
+        if (!fam) return { nodes: new Map(), bounds: new Map() };
+
+        const childSubs = [];
+        for (const cid of fam.children || []) {
+          if (activeIds.has(cid) && !visitedP.has(cid)) {
+            const sub = buildContourDesc(cid, childY);
+            if (sub.nodes.size > 0) childSubs.push(sub);
+          }
+        }
+
+        const nodes = new Map();
+        let bounds = new Map();
+
+        if (childSubs.length > 0) {
+          let accNodes = childSubs[0].nodes;
+          let accBounds = childSubs[0].bounds;
+          const anchors = [childSubs[0].anchorX];
+
+          for (let i = 1; i < childSubs.length; i++) {
+            const cSub = childSubs[i];
+            const dx = minShift(accBounds, cSub.bounds, gapX);
+            const sNodes = shiftNodes(cSub.nodes, dx);
+            const sBounds = shiftBounds(cSub.bounds, dx);
+            for (const [k, v] of sNodes.entries()) accNodes.set(k, v);
+            accBounds = mergeBounds(accBounds, sBounds);
+            anchors.push(cSub.anchorX + dx);
+          }
+
+          const midAnchor = (anchors[0] + anchors[anchors.length - 1]) / 2;
+          accNodes = shiftNodes(accNodes, -midAnchor);
+          accBounds = shiftBounds(accBounds, -midAnchor);
+          for (const [k, v] of accNodes.entries()) nodes.set(k, v);
+          bounds = accBounds;
+        }
+
+        const par = buildImmediateParents(fid, childY - gapY);
+        if (par.nodes.size > 0) {
+          for (const [k, v] of par.nodes.entries()) nodes.set(k, v);
+          bounds = mergeBounds(bounds, par.bounds);
+        }
+
+        return { nodes, bounds };
+      };
+
+      // --- 4. Seed & Iteratively Dock All Family Branches in Chronological Rows ---
+      const focusP = individuals[focusId];
+      const seedFamc = (focusP?.famc || []).find((fid) => families[fid]);
+      if (seedFamc) {
+        const hb = makeHourglass(seedFamc, 0);
+        const focusLocalX = hb.nodes.get(focusId)?.x || 0;
+        commitBlock(hb.nodes, -focusLocalX);
+      } else {
+        const sub = buildContourDesc(focusId, 0);
+        commitBlock(sub.nodes, -sub.anchorX);
+      }
+
+      const drainQueue = () => {
+        while (personQueue.length > 0) {
+          const pid = personQueue.shift();
+          const pPos = placedNodes.get(pid);
+          const p = individuals[pid];
+          if (!pPos || !p) continue;
+
+          // Dock unvisited parent/sibling hourglass blocks right above/beside pid
+          for (const fid of p.famc || []) {
+            if (!visitedF.has(fid) && families[fid]) {
+              const hb = makeHourglass(fid, pPos.y);
+              if (hb.nodes.size > 0) {
+                commitBlock(hb.nodes, pPos.x);
+              }
+            }
+          }
+
+          // Dock unvisited secondary marriages & their children/spouses beside pid
+          for (const fid of p.fams || []) {
+            if (!visitedF.has(fid) && families[fid]) {
+              const hb = makeHourglass(fid, pPos.y + gapY);
+              if (hb.nodes.size > 0) {
+                const fam = families[fid];
+                const spId = fam.husband === pid ? fam.wife : fam.husband;
+                const spLocal = spId ? hb.nodes.get(spId) : null;
+                const desiredDx = spLocal
+                  ? pPos.x + cardW + spouseGap - spLocal.x
+                  : pPos.x;
+                commitBlock(hb.nodes, desiredDx);
+              }
+            }
+          }
+        }
+      };
+
+      drainQueue();
+
+      // Place any remaining disconnected individuals on row 0
+      for (const pid of activeIds) {
+        if (!visitedP.has(pid)) {
+          const p = individuals[pid];
+          const fId = (p?.famc || []).find((f) => families[f] && !visitedF.has(f));
+          if (fId) {
+            const hb = makeHourglass(fId, 0);
+            commitBlock(hb.nodes, 0);
+          } else {
+            const sub = buildContourDesc(pid, 0);
+            commitBlock(sub.nodes, 0);
+          }
+          drainQueue();
         }
       }
 
-      // Rings 1..maxRing
-      for (let r = 1; r <= maxRing; r++) {
-        const uList = byRing.get(r) || [];
-        const ringR = radii.get(r);
-        const stepAng = (pillH + spouseArcGap) / ringR;
+      // --- 5. Build Connectors for All Families ---
+      const connectors = [];
+      const connectedFamIds = new Set();
 
-        for (const uIdx of uList) {
-          const u = units[uIdx];
-          const mCnt = u.members.length;
-          const startTheta = u.theta - ((mCnt - 1) * stepAng) / 2;
-          for (let i = 0; i < mCnt; i++) {
-            const pid = u.members[i];
-            const th = startTheta + i * stepAng;
-            const x = ringR * Math.cos(th);
-            const y = ringR * Math.sin(th);
-            memberPolar.set(pid, { r: ringR, theta: th, x, y, ring: r });
-            this.nodePositions.set(pid, { x, y, w: pillW, h: pillH });
-            radialNodes.push({
-              id: pid,
-              x,
-              y,
-              r: ringR,
-              theta: th,
-              ring: r,
-              w: pillW,
-              h: pillH,
+      for (const [fid, fam] of Object.entries(families)) {
+        const hPos = fam.husband ? placedNodes.get(fam.husband) : null;
+        const wPos = fam.wife ? placedNodes.get(fam.wife) : null;
+        if (!hPos && !wPos) continue;
+
+        const mEvent = (fam.events || []).find((e) => e.type === "MARR");
+        const mYear = mEvent?.date ? (mEvent.date.match(/\b(\d{4})\b/) || [])[1] || "" : "";
+
+        const isAdjacentCouple =
+          hPos &&
+          wPos &&
+          Math.abs(hPos.y - wPos.y) < 5 &&
+          Math.abs(hPos.x - wPos.x) <= cardW + spouseGap + 30;
+
+        // If spouses were placed far apart due to a cousin-marriage cycle, connect them with a curve
+        if (hPos && wPos && !isAdjacentCouple && this.showCrossLinks) {
+          connectors.push({
+            type: "cross-branch",
+            famId: fid,
+            personIds: [fam.husband, fam.wife],
+            from: { x: hPos.x, y: hPos.y },
+            to: { x: wPos.x, y: wPos.y },
+          });
+        }
+
+        const placedChildren = (fam.children || [])
+          .map((cid) => placedNodes.get(cid))
+          .filter(Boolean);
+
+        if (isAdjacentCouple) {
+          connectedFamIds.add(fid);
+          const leftP = hPos.x <= wPos.x ? hPos : wPos;
+          const rightP = hPos.x <= wPos.x ? wPos : hPos;
+          const midX = (leftP.x + rightP.x) / 2;
+          const midY = leftP.y;
+
+          const sameStepChildren = [];
+          for (const ch of placedChildren) {
+            if (Math.abs(ch.y - (midY + gapY)) < 10) {
+              sameStepChildren.push({ x: ch.x, y: ch.y });
+            } else if (this.showCrossLinks) {
+              connectors.push({
+                type: "cross-branch",
+                famId: fid,
+                personIds: [fam.husband, fam.wife, ch.id].filter(Boolean),
+                from: { x: midX, y: midY + halfH },
+                to: { x: ch.x, y: ch.y - halfH },
+              });
+            }
+          }
+
+          if (sameStepChildren.length > 0) {
+            connectors.push({
+              type: "couple-children",
+              famId: fid,
+              p1: { x: leftP.x + halfW, y: leftP.y },
+              p2: { x: rightP.x - halfW, y: rightP.y },
+              mid: { x: midX, y: midY },
+              marriageYear: mYear,
+              children: sameStepChildren,
+            });
+          } else {
+            connectors.push({
+              type: "couple-only",
+              famId: fid,
+              p1: { x: leftP.x + halfW, y: leftP.y },
+              p2: { x: rightP.x - halfW, y: rightP.y },
+              mid: { x: midX, y: midY },
+              marriageYear: mYear,
             });
           }
-        }
-      }
-
-      // 6. Draw Concentric Rings, Polar Hermite Radial Curves, Marriage Arcs & Cross Links
-      let linksHtml = "";
-      let badgesHtml = "";
-
-      // Concentric guide rings
-      const hubR = Math.max(150, (centerNodes.length * rootCardW) / 2 + 54);
-      linksHtml += `<circle cx="0" cy="0" r="${hubR.toFixed(1)}" class="radial-hub-ring" />`;
-
-      for (let r = 1; r <= maxRing; r++) {
-        const ringR = radii.get(r);
-        linksHtml += `
-          <circle cx="0" cy="0" r="${ringR.toFixed(1)}" class="radial-guide-ring" />
-          <text x="0" y="${(-ringR + 16).toFixed(1)}" text-anchor="middle" class="radial-ring-label">${r}° Anello</text>
-        `;
-      }
-
-      // Helper: Polar Hermite curve staying strictly inside annulus [r1, r2]
-      const buildPolarHermite = (r1, th1, r2, th2) => {
-        let dTheta = th2 - th1;
-        while (dTheta > Math.PI) dTheta -= 2 * Math.PI;
-        while (dTheta < -Math.PI) dTheta += 2 * Math.PI;
-
-        const steps = Math.max(6, Math.min(18, Math.ceil(Math.abs(dTheta) * 14)));
-        const pts = [];
-        for (let s = 0; s <= steps; s++) {
-          const t = s / steps;
-          const h = 3 * t * t - 2 * t * t * t;
-          const curR = r1 + t * (r2 - r1);
-          const curTh = th1 + h * dTheta;
-          pts.push(`${(curR * Math.cos(curTh)).toFixed(1)} ${(curR * Math.sin(curTh)).toFixed(1)}`);
-        }
-        return `M ${pts[0]} L ${pts.slice(1).join(" L ")}`;
-      };
-
-      // Marriage arcs within each unit
-      for (const u of units) {
-        if (u.members.length < 2) continue;
-        if (u.ring === 0) {
-          const p1 = memberPolar.get(u.members[0]);
-          const p2 = memberPolar.get(u.members[1]);
-          if (p1 && p2) {
-            linksHtml += `<path class="tree-link marriage-line" d="M ${p1.x} ${p1.y} L ${p2.x} ${p2.y}" />`;
-          }
         } else {
-          for (let i = 0; i < u.members.length - 1; i++) {
-            const p1 = memberPolar.get(u.members[i]);
-            const p2 = memberPolar.get(u.members[i + 1]);
-            if (p1 && p2) {
-              linksHtml += `<path class="tree-link marriage-line" d="M ${p1.x.toFixed(1)} ${p1.y.toFixed(
-                1
-              )} L ${p2.x.toFixed(1)} ${p2.y.toFixed(1)}" />`;
+          // Single parent or cycle-separated couple
+          connectedFamIds.add(fid);
+          if (placedChildren.length > 0) {
+            const avgChX =
+              placedChildren.reduce((acc, c) => acc + c.x, 0) / placedChildren.length;
+            let primaryP = hPos || wPos;
+            if (hPos && wPos) {
+              primaryP =
+                Math.abs(hPos.x - avgChX) <= Math.abs(wPos.x - avgChX) ? hPos : wPos;
+            }
+
+            const sameStepChildren = [];
+            for (const ch of placedChildren) {
+              if (Math.abs(ch.y - (primaryP.y + gapY)) < 10) {
+                sameStepChildren.push({ x: ch.x, y: ch.y });
+              } else if (this.showCrossLinks) {
+                connectors.push({
+                  type: "cross-branch",
+                  famId: fid,
+                  personIds: [primaryP.id, ch.id],
+                  from: { x: primaryP.x, y: primaryP.y + halfH },
+                  to: { x: ch.x, y: ch.y - halfH },
+                });
+              }
+            }
+
+            if (sameStepChildren.length > 0) {
+              connectors.push({
+                type: "single-parent",
+                famId: fid,
+                parent: { x: primaryP.x, y: primaryP.y },
+                children: sameStepChildren,
+              });
             }
           }
         }
       }
 
-      // Primary Radial Spanning Tree Edges (0 crossings!)
-      for (let uIdx = 1; uIdx < units.length; uIdx++) {
-        const u = units[uIdx];
-        const parUnit = units[u.parent];
-        if (!parUnit) continue;
-
-        const childPid = u.members[0];
-        const childPos = memberPolar.get(childPid);
-        if (!childPos) continue;
-
-        const isHighlighted =
-          this.kinshipHighlight &&
-          u.viaFamId &&
-          this.kinshipHighlight.familyIds.has(u.viaFamId);
-        const strokeClass = `tree-link ${isHighlighted ? "kinship-link" : ""}`;
-
-        if (parUnit.ring === 0) {
-          const rStart = hubR;
-          const rEnd = childPos.r - pillW / 2;
-          const d = buildPolarHermite(rStart, childPos.theta, rEnd, childPos.theta);
-          linksHtml += `<path class="${strokeClass}" d="${d}" />`;
-        } else {
-          const viaPos = memberPolar.get(u.viaPid || parUnit.members[0]);
-          if (!viaPos) continue;
-          const rStart = viaPos.r + pillW / 2;
-          const rEnd = childPos.r - pillW / 2;
-          const d = buildPolarHermite(rStart, viaPos.theta, rEnd, childPos.theta);
-          linksHtml += `<path class="${strokeClass}" d="${d}" />`;
-        }
-      }
-
-      // Secondary Cross-Branch Connections (for marriages where BOTH spouses have parents in the tree)
-      if (this.showCrossLinks) {
-        for (const [fid, fam] of Object.entries(families)) {
-          const hId = fam.husband;
-          const wId = fam.wife;
-          const parId = hId || wId;
-          const parPos = parId ? memberPolar.get(parId) : null;
-          if (!parPos) continue;
-
-          for (const cid of fam.children || []) {
-            const chPos = memberPolar.get(cid);
-            if (!chPos) continue;
-            const chUnit = units[personToUnit.get(cid)];
-            const parUnitIdx = personToUnit.get(parId);
-            // If this parent-child link wasn't the primary radial tree parent link, draw a cross-branch curve!
-            if (
-              chUnit &&
-              parUnitIdx !== undefined &&
-              chUnit.parent !== parUnitIdx &&
-              units[parUnitIdx]?.parent !== chUnit.idx
-            ) {
-              const isSelectedLink =
-                this.selectedPersonId &&
-                (this.selectedPersonId === cid ||
-                  this.selectedPersonId === hId ||
-                  this.selectedPersonId === wId);
-              const mx = (parPos.x + chPos.x) * 0.38;
-              const my = (parPos.y + chPos.y) * 0.38;
-              const d = `M ${parPos.x.toFixed(1)} ${parPos.y.toFixed(1)} Q ${mx.toFixed(
-                1
-              )} ${my.toFixed(1)} ${chPos.x.toFixed(1)} ${chPos.y.toFixed(1)}`;
-              const pIdsAttr = [hId, wId, cid].filter(Boolean).join(",");
-              linksHtml += `<path class="cross-branch-link ${
-                isSelectedLink ? "active-cross-link" : ""
-              }" data-person-ids="${escapeXml(pIdsAttr)}" d="${d}" />`;
-            }
-          }
-        }
-      }
-
-      this.linksLayer.innerHTML = linksHtml;
-      if (this.badgesLayer) this.badgesLayer.innerHTML = badgesHtml;
-
-      // Render Center Cards + Radially-Oriented Pills
-      this._drawNodes(centerNodes, null, null);
-      this._drawRadialNodes(radialNodes);
-
-      const outerBound = (radii.get(maxRing) || 600) + pillW + 120;
-      this.bounds = {
-        minX: -outerBound,
-        maxX: outerBound,
-        minY: -outerBound,
-        maxY: outerBound,
-      };
-    }
-
-    _drawRadialNodes(radialNodes) {
-      const hasKinship = Boolean(this.kinshipHighlight);
-
-      for (const n of radialNodes) {
-        const p = this.tree.individuals[n.id];
-        if (!p) continue;
-
-        const isSelected = this.selectedPersonId === n.id;
-        const isFocus = this.focusPersonId === n.id;
-        const isInKinship = hasKinship && this.kinshipHighlight.personIds.has(n.id);
-        const isMrca = hasKinship && this.kinshipHighlight.commonAncestorIds.has(n.id);
-        const isDimmed = hasKinship && !isInKinship;
-
-        const deg = (n.theta * 180) / Math.PI;
-        const flip = deg > 90 || deg < -90;
-        const rotDeg = flip ? deg + 180 : deg;
-
-        const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
-        g.setAttribute(
-          "transform",
-          `translate(${n.x.toFixed(1)}, ${n.y.toFixed(1)}) rotate(${rotDeg.toFixed(2)})`
-        );
-        g.setAttribute(
-          "class",
-          [
-            "person-node",
-            "radial-person-node",
-            `sex-${(p.sex || "U").toLowerCase()}`,
-            isSelected ? "selected" : "",
-            isFocus ? "is-focus" : "",
-            isInKinship ? "kinship-node" : "",
-            isMrca ? "mrca-node" : "",
-            isDimmed ? "dimmed-node" : "",
-          ]
-            .filter(Boolean)
-            .join(" ")
-        );
-        g.dataset.personId = n.id;
-
-        const hw = n.w / 2;
-        const hh = n.h / 2;
-        const avR = this.compactCards ? 13 : 16;
-        const avCx = flip ? hw - avR - 6 : -hw + avR + 6;
-        const textX = flip ? hw - avR * 2 - 12 : -hw + avR * 2 + 12;
-        const textAnchor = flip ? "end" : "start";
-        const pivotX = flip ? -hw + 12 : hw - 12;
-
-        const maxChars = this.compactCards ? 16 : 19;
-        const dispName =
-          p.fullName.length > maxChars ? p.fullName.slice(0, maxChars - 1) + "…" : p.fullName;
-        const years = getLifeYears(p);
-        const clipId = `rad-clip-${n.id.replace(/[^a-zA-Z0-9]/g, "")}`;
-
-        let avatarMarkup = "";
-        if (p.primaryPhoto) {
-          avatarMarkup = `
-            <clipPath id="${clipId}">
-              <circle cx="${avCx}" cy="0" r="${avR}" />
-            </clipPath>
-            <circle cx="${avCx}" cy="0" r="${avR + 1}" class="avatar-ring" />
-            <image href="${escapeXml(p.primaryPhoto)}"
-                   x="${avCx - avR}" y="${-avR}"
-                   width="${avR * 2}" height="${avR * 2}"
-                   preserveAspectRatio="xMidYMid slice"
-                   clip-path="url(#${clipId})" />
-          `;
-        } else {
-          avatarMarkup = `
-            <circle cx="${avCx}" cy="0" r="${avR}" class="avatar-fallback" />
-            <text x="${avCx}" y="4" text-anchor="middle" class="avatar-initials" style="font-size:${
-            this.compactCards ? 9.5 : 11
-          }px">${escapeXml(getInitials(p))}</text>
-          `;
-        }
-
-        g.innerHTML = `
-          <rect x="${-hw}" y="${-hh}" width="${n.w}" height="${n.h}" rx="${hh}" class="card-bg radial-pill-bg" />
-          ${avatarMarkup}
-          <text x="${textX}" y="${years ? -2 : 4}" text-anchor="${textAnchor}" class="radial-pill-name">${escapeXml(
-          dispName
-        )}</text>
-          ${
-            years
-              ? `<text x="${textX}" y="11" text-anchor="${textAnchor}" class="radial-pill-years">${escapeXml(
-                  years
-                )}</text>`
-              : ""
-          }
-          <g class="node-action-btn pivot-icon-btn" transform="translate(${pivotX - 8}, -8)" data-action="focus">
-            <title>Centra l'albero 360° su ${escapeXml(p.fullName)}</title>
-            <circle cx="8" cy="8" r="7.5" class="pivot-circle" />
-            <text x="8" y="11" text-anchor="middle" class="pivot-symbol">↻</text>
-          </g>
-        `;
-
-        g.addEventListener("mouseenter", () => this._highlightPersonCrossLinks(n.id, true));
-        g.addEventListener("mouseleave", () => this._highlightPersonCrossLinks(n.id, false));
-
-        g.addEventListener("click", (e) => {
-          const actionBtn = e.target.closest(".node-action-btn");
-          if (actionBtn && actionBtn.dataset.action === "focus") {
-            e.stopPropagation();
-            if (this.callbacks.onFocusPerson) this.callbacks.onFocusPerson(n.id);
-            return;
-          }
-          if (this.panMoved) return;
-          e.stopPropagation();
-          if (this.callbacks.onSelectPerson) this.callbacks.onSelectPerson(n.id);
+      // Compute generation swimlane bands for visual orientation
+      this._computeBounds(cardW, cardH);
+      const genBands = [];
+      const sortedYs = Array.from(rowSpans.keys()).sort((a, b) => a - b);
+      const focusY = placedNodes.get(focusId)?.y || 0;
+      for (const y of sortedYs) {
+        const genNum = Math.round((y - focusY) / gapY);
+        let genLabel = `Generazione ${genNum > 0 ? "+" + genNum : genNum}`;
+        if (genNum === 0) genLabel = "Generazione 0 (Principale)";
+        else if (genNum === -1) genLabel = "Genitori (-1)";
+        else if (genNum === -2) genLabel = "Nonni (-2)";
+        else if (genNum === -3) genLabel = "Bisnonni (-3)";
+        else if (genNum === -4) genLabel = "Trisavoli (-4)";
+        else if (genNum < -4) genLabel = `Antenati (${genNum}ª gen.)`;
+        else if (genNum === 1) genLabel = "Figli (+1)";
+        else if (genNum === 2) genLabel = "Nipoti (+2)";
+        genBands.push({
+          y,
+          label: genLabel,
+          minX: this.bounds.minX,
+          maxX: this.bounds.maxX,
         });
-
-        g.addEventListener("dblclick", (e) => {
-          e.stopPropagation();
-          if (this.callbacks.onFocusPerson) this.callbacks.onFocusPerson(n.id);
-        });
-
-        this.nodesLayer.appendChild(g);
       }
+
+      this._drawConnectors(connectors, cardW, cardH, [], genBands);
+      this._drawNodes(Array.from(placedNodes.values()), placedNodes, connectedFamIds);
     }
 
     _highlightPersonCrossLinks(personId, active) {
       if (!this.linksLayer) return;
+      const p = personId ? this.tree?.individuals?.[personId] : null;
+      const selP = this.selectedPersonId ? this.tree?.individuals?.[this.selectedPersonId] : null;
+
+      const activeFamSet = new Set();
+      if (active && p) {
+        for (const fid of p.famc || []) activeFamSet.add(fid);
+        for (const fid of p.fams || []) activeFamSet.add(fid);
+      }
+      if (selP) {
+        for (const fid of selP.famc || []) activeFamSet.add(fid);
+        for (const fid of selP.fams || []) activeFamSet.add(fid);
+      }
+
       this.linksLayer.querySelectorAll(".cross-branch-link").forEach((el) => {
         const ids = (el.dataset.personIds || "").split(",");
         const isSelected =
@@ -2584,15 +2586,40 @@ window.TreeEngine = (function () {
           el.classList.remove("active-cross-link");
         }
       });
+
+      this.linksLayer.querySelectorAll(".tree-link[data-fam-id]").forEach((el) => {
+        const fid = el.dataset.famId;
+        if (fid && activeFamSet.has(fid)) {
+          el.classList.add("active-fam-link");
+        } else {
+          el.classList.remove("active-fam-link");
+        }
+      });
     }
 
     // =========================================================================
     // DRAWING CONNECTORS (SMOOTH ROUNDED MYHERITAGE CORNERS), NODES & BADGES
     // =========================================================================
-    _drawConnectors(connectors, cardW, cardH, branchBoxes = []) {
+    _drawConnectors(connectors, cardW, cardH, branchBoxes = [], genBands = []) {
       const halfH = cardH / 2;
       let html = "";
       let badgesHtml = "";
+
+      // Render subtle horizontal generation swimlanes in Full Tree mode
+      for (const band of genBands) {
+        const lineY = band.y - halfH - 28;
+        html += `
+          <g class="gen-swimlane">
+            <line x1="${band.minX.toFixed(1)}" y1="${lineY.toFixed(1)}"
+                  x2="${band.maxX.toFixed(1)}" y2="${lineY.toFixed(1)}"
+                  class="gen-swimlane-line" />
+            <text x="${(band.minX + 24).toFixed(1)}" y="${(band.y + 5).toFixed(1)}"
+                  class="gen-swimlane-label">${escapeXml(band.label)}</text>
+            <text x="${(band.maxX - 24).toFixed(1)}" y="${(band.y + 5).toFixed(1)}"
+                  text-anchor="end" class="gen-swimlane-label">${escapeXml(band.label)}</text>
+          </g>
+        `;
+      }
 
       // Render branch section frames for Branches Tree mode
       for (const box of branchBoxes) {
@@ -2626,6 +2653,23 @@ window.TreeEngine = (function () {
         }
       }
 
+      // Sort connectors so narrower local family spans get Track 0 closest to parents,
+      // and wider docked-pocket connectors get clean lower tracks in the corridor.
+      const getConnectorSpan = (c) => {
+        if (c.type === "couple-children" && c.children?.length > 0) {
+          const xs = [c.mid.x, ...c.children.map((ch) => ch.x)];
+          return Math.max(...xs) - Math.min(...xs);
+        }
+        if (c.type === "single-parent" && c.children?.length > 0) {
+          const xs = [c.parent.x, ...c.children.map((ch) => ch.x)];
+          return Math.max(...xs) - Math.min(...xs);
+        }
+        return 0;
+      };
+      const sortedConnectors = [...connectors].sort(
+        (a, b) => getConnectorSpan(a) - getConnectorSpan(b)
+      );
+
       // Allocate vertical bus tracks per parent row Y so two horizontal buses NEVER overlap!
       const tracksByRow = new Map();
       const getTrackOffset = (parentY, dropX, children) => {
@@ -2647,10 +2691,10 @@ window.TreeEngine = (function () {
         }
         if (tIdx === tracks.length) tracks.push([]);
         tracks[tIdx].push({ minX, maxX });
-        return tIdx * 9;
+        return tIdx * 8;
       };
 
-      for (const c of connectors) {
+      for (const c of sortedConnectors) {
         if (c.type === "cross-branch") {
           const dy = c.to.y - c.from.y;
           const ctrlOffset = Math.max(110, Math.min(420, Math.abs(dy) * 0.42));
@@ -2682,11 +2726,12 @@ window.TreeEngine = (function () {
 
         const isHighlighted =
           this.kinshipHighlight && c.famId && this.kinshipHighlight.familyIds.has(c.famId);
+        const famAttr = c.famId ? `data-fam-id="${escapeXml(c.famId)}"` : "";
         const strokeClass = `tree-link ${isHighlighted ? "kinship-link" : ""}`;
 
         if (c.type === "couple-only" || c.type === "couple-children") {
           // Horizontal line between spouses
-          html += `<path class="${strokeClass} marriage-line" d="M ${c.p1.x} ${c.p1.y} L ${c.p2.x} ${c.p2.y}" />`;
+          html += `<path class="${strokeClass} marriage-line" ${famAttr} d="M ${c.p1.x} ${c.p1.y} L ${c.p2.x} ${c.p2.y}" />`;
 
           if (c.marriageYear) {
             const badgeW = 56;
@@ -2702,15 +2747,15 @@ window.TreeEngine = (function () {
 
           if (c.type === "couple-children" && c.children.length > 0) {
             const trackOffset = getTrackOffset(c.mid.y, c.mid.x, c.children);
-            const busY = c.mid.y + halfH + 25 + trackOffset;
+            const busY = c.mid.y + halfH + 22 + trackOffset;
             for (const ch of c.children) {
               const d = buildRoundedDropPath(c.mid.x, c.mid.y, busY, ch.x, ch.y - halfH, 12);
-              html += `<path class="${strokeClass}" d="${d}" />`;
+              html += `<path class="${strokeClass}" ${famAttr} d="${d}" />`;
             }
           }
         } else if (c.type === "single-parent" && c.children.length > 0) {
           const trackOffset = getTrackOffset(c.parent.y, c.parent.x, c.children);
-          const busY = c.parent.y + halfH + 25 + trackOffset;
+          const busY = c.parent.y + halfH + 22 + trackOffset;
           for (const ch of c.children) {
             const d = buildRoundedDropPath(
               c.parent.x,
@@ -2720,7 +2765,7 @@ window.TreeEngine = (function () {
               ch.y - halfH,
               12
             );
-            html += `<path class="${strokeClass}" d="${d}" />`;
+            html += `<path class="${strokeClass}" ${famAttr} d="${d}" />`;
           }
         }
       }
