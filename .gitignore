@@ -1,6 +1,8 @@
 # Personal GEDCOM & Tree Data (NEVER commit)
 *.ged
+*.ged.*
 *.gedcom
+*.gedcom.*
 !examples/*.ged
 data/
 tree*.json
