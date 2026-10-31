@@ -159,7 +159,9 @@
 
     document.getElementById("controls-focus").classList.toggle("hidden", mode !== "focus");
     document.getElementById("controls-fan").classList.toggle("hidden", mode !== "fan");
-    document.getElementById("controls-full").classList.toggle("hidden", mode !== "full");
+    document
+      .getElementById("controls-full")
+      .classList.toggle("hidden", mode !== "full" && mode !== "branches");
     document.getElementById("compact-toggle-wrap").classList.toggle("hidden", mode === "fan");
 
     if (mode === "table") {
@@ -371,6 +373,14 @@
       visualizer.surnameFilter = e.target.value;
       visualizer.render(true);
     });
+
+    const crossLinksCheckbox = document.getElementById("opt-cross-links");
+    if (crossLinksCheckbox) {
+      crossLinksCheckbox.addEventListener("change", (e) => {
+        visualizer.showCrossLinks = e.target.checked;
+        visualizer.render(false);
+      });
+    }
 
     document.getElementById("opt-compact-cards").addEventListener("change", (e) => {
       visualizer.compactCards = e.target.checked;

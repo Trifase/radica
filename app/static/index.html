@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/css/styles.css?v=1.4" />
+  <link rel="stylesheet" href="/css/styles.css?v=1.5" />
 </head>
 <body>
   <!-- TOP HEADER -->
@@ -30,8 +30,12 @@
         <span class="mode-icon">🪭</span>
         <span>Ventaglio Antenati</span>
       </button>
-      <button class="mode-btn" data-mode="full" title="Visualizzazione completa di tutto l'albero genealogico">
-        <span class="mode-icon">🌳</span>
+      <button class="mode-btn" data-mode="branches" title="Vista organizzata per rami familiari con connessioni tra rami">
+        <span class="mode-icon">🌿</span>
+        <span>Vista Rami</span>
+      </button>
+      <button class="mode-btn" data-mode="full" title="Visualizzazione concentrica a 360° dell'intero albero genealogico">
+        <span class="mode-icon">🌐</span>
         <span>Vista Completa</span>
       </button>
       <button class="mode-btn" data-mode="table" title="Elenco anagrafico completo e filtri">
@@ -132,13 +136,17 @@
         </label>
       </div>
 
-      <!-- Full Mode Controls -->
+      <!-- Branches & Full Mode Controls -->
       <div id="controls-full" class="toolbar-group hidden">
         <label class="toolbar-item">
           <span>Filtra Cognome:</span>
           <select id="opt-surname-filter">
             <option value="">Tutti i cognomi (Albero intero)</option>
           </select>
+        </label>
+        <label class="toolbar-item checkbox-item" title="Mostra le linee di connessione tra i diversi rami familiari">
+          <input type="checkbox" id="opt-cross-links" checked />
+          <span>Connessioni tra rami</span>
         </label>
       </div>
 
@@ -613,8 +621,8 @@
   <!-- TOAST NOTIFICATION -->
   <div id="toast-container" class="toast-container"></div>
 
-  <script src="/js/kinship.js?v=1.4"></script>
-  <script src="/js/tree-engine.js?v=1.4"></script>
-  <script src="/js/app.js?v=1.4"></script>
+  <script src="/js/kinship.js?v=1.5"></script>
+  <script src="/js/tree-engine.js?v=1.5"></script>
+  <script src="/js/app.js?v=1.5"></script>
 </body>
 </html>
